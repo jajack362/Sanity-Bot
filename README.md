@@ -7,5 +7,5 @@ Sanity Bot is a Discordpy bot used to submit and manage data for several purpose
 
 Sanity Bot makes use of boto3 and gspread Python APIs for inserting and downloading data from an AWS DynamoDB and Google Sheets.
 
-If you have any questions, please join Sanity Discord [Discord](https://discord.gg/Sanity) server, or message jajack#2361 on Discord.
+If you have any questions, please join Sanity [Discord](https://discord.gg/Sanity) server, or message jajack#2361 on Discord.
 
