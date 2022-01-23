@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 
+from PersonalBest import PersonalBest
+
 env_path = Path('.')/'.env'
 load_dotenv(dotenv_path=env_path)
 
@@ -64,24 +66,8 @@ openDms = []
 # List of DateTime objects containing the time that open DMs need to be closed, these are checked every 15 seconds for expiry
 dmCloseTimes = []
 
-# List of Member objects who have an open pb submission
+# List of PersonalBest objects who have an open pb submission
 pendingPBs = []
-# List of PB bosses that are open for submission 
-pendingPBbosses = []
-# List of PB names that are open for submission 
-pendingPBnames = []
-# List of PB times that are open for submission
-pendingPBtimes = []
-# List of Member objects wating for confirmation on boss selection
-awaitingBossConfirm = []
-# List of URLs containg proof of PBs
-pendingPBproof = []
-# List of Message objects othat are complete submissions waiting for admin approval
-pendingPBsubmissions = []
-# List of Lists that contain all the data needed for the submission
-pendingPBApproval = []
-# List of DateTime objects containing the time that open PBs need to be closed, these are checked every 15 seconds for expiry
-pbCloseTimes = []
 
 # List containing the downloaded database for local use
 pbDatabase = []
@@ -135,23 +121,13 @@ async def checkStoredDateTimes():
             openDms.remove(openDms[dmCloseTimes.index(dateTime)])
             dmCloseTimes.remove(dateTime)
 
-    for dateTime in pbCloseTimes:
-        if dateTime < now:
+    for pb in pendingPBs:
+        if pb.getTimeoutTime() < now:
             guild = get(bot.guilds, id = SERVER_ID)
             pb_submissions = get(guild.channels, id = PB_SUBMISSIONS_ID)
-            member = pendingPBs[pbCloseTimes.index(dateTime)]
+            member = pb.getSubmitter()
             await pb_submissions.send(member.mention + " Submission timed out. Please start a new submission.")
-
-            pendingPBbosses.remove(pendingPBbosses[pbCloseTimes.index(dateTime)])
-            pendingPBnames.remove(pendingPBnames[pbCloseTimes.index(dateTime)])
-            pendingPBtimes.remove(pendingPBtimes[pbCloseTimes.index(dateTime)])
-            awaitingBossConfirm.remove(awaitingBossConfirm[pbCloseTimes.index(dateTime)])
-            pendingPBproof.remove(pendingPBproof[pbCloseTimes.index(dateTime)])
-            pendingPBs.remove(pendingPBs[pbCloseTimes.index(dateTime)])
-            pbCloseTimes.remove(pbCloseTimes[pbCloseTimes.index(dateTime)])
-
-            
-
+            pendingPBs.remove(pb)
 
 
 @bot.command(name='closeapps')
@@ -195,33 +171,27 @@ async def event(ctx):
 @bot.command(name='pb')
 async def event(ctx):
     member = ctx.author
+    found = False
     if (member.id != BOT_UID and ctx.channel.id == PB_SUBMISSIONS_ID):
-        if (member not in pendingPBs):
+        for pb in pendingPBs:
+            if pb.submitter == member:
+                found = True
+
+        if not found:
             now = datetime.datetime.now()
             now_plus_60 = now + datetime.timedelta(seconds = 60)
-
-            pendingPBs.append(member)
-            pendingPBbosses.append("pending")
-            pendingPBnames.append("pending")
-            pendingPBtimes.append(0)
-            awaitingBossConfirm.append("pending")
-            pendingPBproof.append("pending")
-            pbCloseTimes.append(now_plus_60)
+            pb = PersonalBest(member, "bossName", False, "players", 0, "proof", now_plus_60, False, 0)        
+            pendingPBs.append(pb)
 
 #cancel
 @bot.command(name='cancel')
 async def event(ctx):
     if (ctx.channel.id == PB_SUBMISSIONS_ID):
-        if (ctx.author in pendingPBs):
-            pendingPBbosses.remove(pendingPBbosses[pendingPBs.index(ctx.author)])
-            pendingPBnames.remove(pendingPBnames[pendingPBs.index(ctx.author)])
-            pendingPBtimes.remove(pendingPBtimes[pendingPBs.index(ctx.author)])
-            awaitingBossConfirm.remove(awaitingBossConfirm[pendingPBs.index(ctx.author)])
-            pendingPBproof.remove(pendingPBproof[pendingPBs.index(ctx.author)])
-            pbCloseTimes.remove(pbCloseTimes[pendingPBs.index(ctx.author)])
-            pendingPBs.remove(ctx.author)
+        for pb in pendingPBs:
+            if pb.submitter == ctx.author:
+                await ctx.send(ctx.author.mention + " Submission canceled.")
+                pendingPBs.remove(pb)
 
-            await ctx.send("Submission canceled")
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -234,7 +204,7 @@ async def on_command_error(ctx, error):
 async def on_message(reply):
     await bot.process_commands(reply)
     # If DM, assume its an application
-    if isinstance(reply.channel, discord.channel.DMChannel): 
+    if isinstance(reply.channel, discord.channel.DMChannel):
         for member in openDms:
             if (member.id == reply.author.id):
                 pending_applications = bot.get_channel(PENDING_APPLICATIONS_ID)
@@ -247,117 +217,101 @@ async def on_message(reply):
                 dmCloseTimes.remove(dmCloseTimes[openDms.index(member)])
                 openDms.remove(member)
     # If in pending PBs, assume its for a PB
-    elif (reply.author in pendingPBs):
-        if (reply.channel.id == PB_SUBMISSIONS_ID):
-            message = reply
-            if pendingPBproof[pendingPBs.index(reply.author)] == "pending":
-                # this will never break i promise..
-                if "imgur." in reply.content:
-                    pendingPBproof[pendingPBs.index(reply.author)] = reply.content
-                    await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself.")
-                else:
-                    await reply.channel.send(reply.author.mention + " Please provide image proof (Imgur only).")
+    for pb in pendingPBs:
+        if reply.author == pb.submitter:
+            if (reply.channel.id == PB_SUBMISSIONS_ID):
+                message = reply
+                if pb.getProof() == "proof":
+                    # this will never break i promise..
+                    if "imgur." in reply.content:
+                        pb.setProof(reply.content)
+                        await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself.")
+                    else:
+                        await reply.channel.send(reply.author.mention + " Please provide image proof (Imgur only).")
 
-            elif pendingPBnames[pendingPBs.index(reply.author)] == "pending":
-                try:
-                    IDs = reply.content.split(" ")
-                    names = []
-                    for name in IDs:
-                        intID = int(''.join(filter(str.isdigit, name)))
-                        names.append(intID)
+                elif pb.getPlayers() == "players":
+                    try:
+                        IDs = reply.content.split(" ")
+                        names = []
+                        for name in IDs:
+                            intID = int(''.join(filter(str.isdigit, name)))
+                            names.append(intID)
 
-                    pendingPBnames[pendingPBs.index(reply.author)] = names
-                    await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
-                except:
-                    await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself.")
+                        pb.setPlayers(names)
+                        await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
+                    except:
+                        await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself.")
 
-            elif pendingPBbosses[pendingPBs.index(reply.author)] == "pending":
-                for boss in pbBosses:
-                    if boss in reply.content.lower():
-                        if (boss == "cm" or boss == "challenge mode"):
-                            message = await reply.channel.send (reply.author.mention + " Do you mean 'Chambers of Xeric (Challenge mode)'? (Yes/No)")
-                            break
-                        elif (boss == "cox" or boss == "chambers of xeric"):
-                            message = await reply.channel.send (reply.author.mention + " Do you mean 'Chambers of Xeric'? (Yes/No)")
-                            break
-                        elif (boss == "tob" or boss == "theatre of blood"):
-                            message = await reply.channel.send (reply.author.mention + " Do you mean 'Theatre of Blood'? (Yes/No)")
-                            break
-                        elif (boss == "gauntlet" or boss == "corrupted gauntlet"):
-                            message = await reply.channel.send (reply.author.mention + " Do you mean 'Corrupted Gauntlet'? (Yes/No)")
-                            break
-                        elif (boss == "6 jads" or boss == "jads" or boss == "6"):
-                            message = await reply.channel.send (reply.author.mention + " Do you mean '6 Jads'? (Yes/No)")
-                            break
-                        elif (boss == "fight caves" or boss == "jad"):
-                            message = await reply.channel.send (reply.author.mention + " Do you mean 'Fight Caves'? (Yes/No)")
-                            break
-                        elif (boss == "inferno"):
-                            message = await reply.channel.send (reply.author.mention + " Do you mean 'The Inferno'? (Yes/No)")
-                            break  
-                
-                if message != reply:
-                    split1 = message.content.split("'")[1]
-                    pendingPBbosses[pendingPBs.index(reply.author)] = split1.split("'")[0]
-                else:
-                    await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
-
-            elif awaitingBossConfirm[pendingPBs.index(reply.author)] != "y":
-                if reply.content.lower() == "no":
-                    pendingPBbosses[pendingPBs.index(reply.author)] = "pending"
-                    await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
-                elif reply.content.lower() == "yes":
-                    await reply.channel.send(reply.author.mention + "  Please enter your time in mm:ss format.")
-                    awaitingBossConfirm[pendingPBs.index(reply.author)] = "y"
-                else:
-                    await reply.channel.send(reply.author.mention + " yes or no only please.")             
-
-            elif pendingPBtimes[pendingPBs.index(reply.author)] == 0:
-                if (re.search("[0-9]{1,3}:[0-5]{1}[0-9]{1}", reply.content) and reply.content[len(reply.content) - 3] == ":"):
-                    pendingPBtimes[pendingPBs.index(reply.author)] = reply.content
-                else:
-                    await reply.channel.send(reply.author.mention + " Please enter your time in mm:ss format.")
-
-            # Every message in pb channel from them resets timeout timer to 60seconds
-            now = datetime.datetime.now()
-            now_plus_60 = now + datetime.timedelta(seconds = 60)
-
-            # Will throw error if index doesnt exist, so we can use that to know when to add/edit the index
-            try:
-                pbCloseTimes[pendingPBs.index(reply.author)] = now_plus_60
+                elif pb.getBossName() == "bossname":
+                    for boss in pbBosses:
+                        if boss in reply.content.lower():
+                            if (boss == "cm" or boss == "challenge mode"):
+                                message = await reply.channel.send (reply.author.mention + " Do you mean 'Chambers of Xeric (Challenge mode)'? (Yes/No)")
+                                break
+                            elif (boss == "cox" or boss == "chambers of xeric"):
+                                message = await reply.channel.send (reply.author.mention + " Do you mean 'Chambers of Xeric'? (Yes/No)")
+                                break
+                            elif (boss == "tob" or boss == "theatre of blood"):
+                                message = await reply.channel.send (reply.author.mention + " Do you mean 'Theatre of Blood'? (Yes/No)")
+                                break
+                            elif (boss == "gauntlet" or boss == "corrupted gauntlet"):
+                                message = await reply.channel.send (reply.author.mention + " Do you mean 'Corrupted Gauntlet'? (Yes/No)")
+                                break
+                            elif (boss == "6 jads" or boss == "jads" or boss == "6"):
+                                message = await reply.channel.send (reply.author.mention + " Do you mean '6 Jads'? (Yes/No)")
+                                break
+                            elif (boss == "fight caves" or boss == "jad"):
+                                message = await reply.channel.send (reply.author.mention + " Do you mean 'Fight Caves'? (Yes/No)")
+                                break
+                            elif (boss == "inferno"):
+                                message = await reply.channel.send (reply.author.mention + " Do you mean 'The Inferno'? (Yes/No)")
+                                break  
                     
-            except:
-                pass
-                
+                    if message != reply:
+                        split1 = message.content.split("'")[1]
+                        pb.setBossName(split1.split("'")[0])
+                    else:
+                        await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
 
+                elif pb.getBossConfirmed() == False:
+                    if reply.content.lower() == "no":
+                        await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
+                    elif reply.content.lower() == "yes":
+                        await reply.channel.send(reply.author.mention + "  Please enter your time in mm:ss format.")
+                        pb.setBossConfirmed(True)
+                    else:
+                        await reply.channel.send(reply.author.mention + " yes or no only please.")             
 
-            # If proof is filled, assume completed PB submission
-            if pendingPBtimes[pendingPBs.index(reply.author)] != 0:
-                await reply.channel.send(reply.author.mention + " Submission complete. Please wait for approval.")
-                guild = get(bot.guilds, id = SERVER_ID)
-                pending_pbs = get(guild.channels, id = PENDING_PBS_ID)
-                message = await pending_pbs.send("New pb submission for: " +  ', '.join(guild.get_member(name).mention for name in pendingPBnames[pendingPBs.index(reply.author)]) +
-                "\nBoss: " + pendingPBbosses[pendingPBs.index(reply.author)] +
-                "\nTime: " + pendingPBtimes[pendingPBs.index(reply.author)] +
-                "\nProof: " + pendingPBproof[pendingPBs.index(reply.author)])
-                temp = []
-                temp.append(pendingPBbosses[pendingPBs.index(reply.author)])
-                temp.append(pendingPBnames[pendingPBs.index(reply.author)])
-                temp.append(pendingPBproof[pendingPBs.index(reply.author)])
-                temp.append(pendingPBtimes[pendingPBs.index(reply.author)])
-                temp.append(reply.author)
-                pendingPBApproval.append(temp)
+                elif pb.getTime() == 0:
+                    if (re.search("[0-9]{1,3}:[0-5]{1}[0-9]{1}", reply.content) and reply.content[len(reply.content) - 3] == ":"):
+                        pb.setTime(reply.content)
+                    else:
+                        await reply.channel.send(reply.author.mention + " Please enter your time in mm:ss format.")
 
-                pendingPBbosses.remove(pendingPBbosses[pendingPBs.index(reply.author)])
-                pendingPBnames.remove(pendingPBnames[pendingPBs.index(reply.author)])
-                pendingPBtimes.remove(pendingPBtimes[pendingPBs.index(reply.author)])
-                awaitingBossConfirm.remove(awaitingBossConfirm[pendingPBs.index(reply.author)])
-                pendingPBproof.remove(pendingPBproof[pendingPBs.index(reply.author)])
-                pbCloseTimes.remove(pbCloseTimes[pendingPBs.index(reply.author)])
-                await message.add_reaction('✔️')
-                await message.add_reaction('❌')
-                pendingPBsubmissions.append(message)
-                pendingPBs.remove(reply.author)
+                # Every message in pb channel from them resets timeout timer to 60seconds
+                now = datetime.datetime.now()
+                now_plus_60 = now + datetime.timedelta(seconds = 60)
+
+                # Will throw error if index doesnt exist, so we can use that to know when to add/edit the index
+                try:
+                    pb.setTimeoutTime(now_plus_60)
+                        
+                except:
+                    pass
+                    
+                # If time is filled, assume completed PB submission
+                if pb.getTime() != 0:
+                    await reply.channel.send(reply.author.mention + " Submission complete. Please wait for approval.")
+                    guild = get(bot.guilds, id = SERVER_ID)
+                    pending_pbs = get(guild.channels, id = PENDING_PBS_ID)
+                    message = await pending_pbs.send("New pb submission for: " +  ', '.join(guild.get_member(name).mention for name in pb.getPlayers()) +
+                    "\nBoss: " + pb.getBossName() +
+                    "\nTime: " + pb.getTime() +
+                    "\nProof: " + pb.getProof())
+
+                    await message.add_reaction('✔️')
+                    await message.add_reaction('❌')
+                    pendingApps.append(message)
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -440,34 +394,26 @@ async def on_raw_reaction_add(payload):
                         pass
                     
 
-    for message in pendingPBsubmissions:
-        if message.id == payload.message_id:
+    for pb in pendingPBs:
+        if payload.message.id == pb.getMessageID():
             if (payload.member.id != BOT_UID):
                 roleIds = []
-                reset = False
                 for role in payload.member.roles:
                     roleIds.append(role.id)
                 if(OFFICIAL_ROLE_ID in roleIds or payload.member.id == DEV_UID):
                     if (payload.emoji.name == '✔️'):
-                        await put_pb(pendingPBApproval[pendingPBsubmissions.index(message)][0],pendingPBApproval[pendingPBsubmissions.index(message)][1],pendingPBApproval[pendingPBsubmissions.index(message)][2],pendingPBApproval[pendingPBsubmissions.index(message)][3])
+                        await put_pb(pb.getBossName(), pb.getNames(), pb.getProof(), pb.getTime())
                         await message.clear_reaction('✔️')
                         await message.clear_reaction('❌')
-                        reset = True
+                        pendingPBs.remove(pb)
                         pbSubmittedUpdate[0] = True
                     elif (payload.emoji.name == '❌'):
-                        user = pendingPBApproval[pendingPBsubmissions.index(message)][4]
+                        user = pb.getSubmitter()
                         await message.delete()
                         channel = await user.create_dm()
                         await channel.send("Your pb submission has been declined. Please private message " + payload.member.name + " if you wish to find out why.")
-                        reset = True
+                        pendingPBs.remove(pb)
                 
-                # Clear temp storage
-                try:
-                    if reset:
-                        pendingPBApproval.remove(pendingPBApproval[pendingPBsubmissions.index(message)])
-                        pendingPBsubmissions.remove(message)
-                except:
-                    pass
 
 #insert pb to database & spreadsheet
 async def put_pb(bossname, players, proof, time):
