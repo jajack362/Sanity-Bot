@@ -293,7 +293,6 @@ async def on_message(reply):
                     await message.add_reaction('❌')
                     pb.setMessageID(message.id)
                     pb.setStatus(PersonalBestStatus.PENDING)
-                    pendingApps.append(message)
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -377,7 +376,7 @@ async def on_raw_reaction_add(payload):
                     
 
     for pb in pendingPBs:
-        if payload.message_id == pb.getMessageID():
+        if payload.message_id == pb.getMessageID() and pb.getStatus() == PersonalBestStatus.PENDING:
             if (payload.member.id != BOT_UID):
                 roleIds = []
                 for role in payload.member.roles:
