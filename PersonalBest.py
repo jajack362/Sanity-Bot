@@ -1,13 +1,13 @@
 class PersonalBest:
-    def __init__(self, submitter, bossName, bossConfirmed, players, time, proof, timeoutTime, approved, messageID):
+    def __init__(self, submitter, bossName, bossGuess, players, time, proof, timeoutTime, status, messageID):
         self.submitter = submitter
         self.bossName = bossName
-        self.bossConfirmed = bossConfirmed
+        self.bossGuess = bossGuess
         self.players = players
         self.time = time
         self.proof = proof
         self.timeoutTime = timeoutTime
-        self.approved = approved
+        self.status = status
         self.messageID = messageID
 
     def getSubmitter(self):
@@ -16,8 +16,8 @@ class PersonalBest:
     def getBossName(self):
         return self.bossName
 
-    def getBossConfirmed(self):
-        return self.bossConfirmed
+    def getBossGuess(self):
+        return self.bossGuess
 
     def getPlayers(self):
         return self.players
@@ -31,8 +31,8 @@ class PersonalBest:
     def getTimeoutTime(self):
         return self.timeoutTime
 
-    def getApproved(self):
-        return self.approved
+    def getStatus(self):
+        return self.status
 
     def getMessageID(self):
         return self.messageID
@@ -40,8 +40,8 @@ class PersonalBest:
     def setBossName(self, bossName):
         self.bossName = bossName
 
-    def setBossConfirmed(self, getBossConfirmed):
-        self.getBossConfirmed = getBossConfirmed
+    def setBossGuess(self, bossGuess):
+        self.bossGuess = bossGuess
 
     def setPlayers(self, players):
         self.players = players
@@ -55,8 +55,8 @@ class PersonalBest:
     def setTimeoutTime(self, newTime):
         self.timeoutTime = newTime
     
-    def setApproved(self, approved):
-        self.approved = approved
+    def setStatus(self, status):
+        self.status = status
 
     def setMessageID(self, messageID):
         self.messageID = messageID
