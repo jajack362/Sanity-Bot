@@ -377,7 +377,7 @@ async def on_raw_reaction_add(payload):
 
     for pb in pendingPBs:
         if payload.message_id == pb.getMessageID() and pb.getStatus() == PersonalBestStatus.PENDING:
-            if (payload.member.id != BOT_UID):
+            if payload.member.id != BOT_UID:
                 roleIds = []
                 for role in payload.member.roles:
                     roleIds.append(role.id)
@@ -410,7 +410,7 @@ async def put_pb(bossname, players, proof, time):
     #database
     boto3_client.put_item(TableName='Submitted_PBs', Item={
         'SubID':{
-           'N': str(len(pbDatabase[0]) + 9)
+           'N': str(len(pbDatabase) + 9)
         },
         'BossName':{
             'S': bossname
@@ -452,17 +452,17 @@ def get_db():
     table = boto3_resource.Table('Submitted_PBs')
     response = table.scan()
     pbDatabase.clear()
-    pbDatabase.append(response['Items'])
-
-    inc = 0
+    awsDownload = (response['Items'])
+    for pb in awsDownload:
+        pbDatabase.append(PersonalBest(None, pb['BossName'], None, pb['Players'], pb['Time'], pb['Proof'], None, None, None))
+    
     # Turn mm:ss strings into datetime
-    while inc < len(pbDatabase[0]):
-        # If no :, assume already converted to seconds
-        if (":" in  str(pbDatabase[0][inc]['Time'])):
-            m,s = str(pbDatabase[0][inc]['Time']).split(':')
+    for pb in pbDatabase:
+        if ":" in pb.getTime():
+            # If no :, assume already converted to seconds
+            m,s = pb.getTime().split(':')
             #Convert to seconds for sorting later on
-            pbDatabase[0][inc]['Time'] = datetime.timedelta(minutes=int(m),seconds=int(s)).total_seconds()
-        inc += 1
+            pb.setTime(datetime.timedelta(minutes=int(m),seconds=int(s)).total_seconds())
 
 # update pb leaderboards channel
 async def update_pbs():
@@ -484,38 +484,38 @@ async def update_pbs():
     inc = 0
 
     # Sort pbs into individual arrays - needs a cleaner solution tbh 
-    while inc < len(pbDatabase[0]):
-        if pbDatabase[0][inc]['BossName'] == "Chambers of Xeric (Challenge mode)":
-            if pbDatabase[0][inc]['Players'].count(",") == 0:
-                cox_cm_solo.append(pbDatabase[0][inc])
-            if pbDatabase[0][inc]['Players'].count(",") == 2:
-                cox_cm_trio.append(pbDatabase[0][inc])
-            if pbDatabase[0][inc]['Players'].count(",") == 4:
-                cox_cm_5.append(pbDatabase[0][inc])
-        elif pbDatabase[0][inc]['BossName'] == "Chambers of Xeric":
-            if pbDatabase[0][inc]['Players'].count(",") == 0:
-                cox_solo.append(pbDatabase[0][inc])
-        elif pbDatabase[0][inc]['BossName'] == "Theatre of Blood":
-            if pbDatabase[0][inc]['Players'].count(",") == 1:
-                tob_duo.append(pbDatabase[0][inc])
-            if pbDatabase[0][inc]['Players'].count(",") == 2:
-                tob_trio.append(pbDatabase[0][inc])
-            if pbDatabase[0][inc]['Players'].count(",") == 3:
-                tob_4.append(pbDatabase[0][inc])
-            if pbDatabase[0][inc]['Players'].count(",") == 4:
-                tob_5.append(pbDatabase[0][inc])
-        elif pbDatabase[0][inc]['BossName'] == "Fight Caves":
-            if pbDatabase[0][inc]['Players'].count(",") == 0:
-                fight_caves.append(pbDatabase[0][inc])
-        elif pbDatabase[0][inc]['BossName'] == "6 Jads":
-            if pbDatabase[0][inc]['Players'].count(",") == 0:
-                six_jads.append(pbDatabase[0][inc])
-        elif pbDatabase[0][inc]['BossName'] == "Corrupted Gauntlet":
-            if pbDatabase[0][inc]['Players'].count(",") == 0:
-                c_gauntlet.append(pbDatabase[0][inc])
-        elif pbDatabase[0][inc]['BossName'] == "The Inferno":
-            if pbDatabase[0][inc]['Players'].count(",") == 0:
-                inferno.append(pbDatabase[0][inc])
+    for pb in pbDatabase:
+        if pb.getBossName() == "Chambers of Xeric (Challenge mode)":
+            if pb.getPlayers().count(",") == 0:
+                cox_cm_solo.append(pb)
+            if pb.getPlayers().count(",") == 2:
+                cox_cm_trio.append(pb)
+            if pb.getPlayers().count(",") == 4:
+                cox_cm_5.append(pb)
+        elif pb.getBossName() == "Chambers of Xeric":
+            if pb.getPlayers().count(",") == 0:
+                cox_solo.append(pb)
+        elif pb.getBossName() == "Theatre of Blood":
+            if pb.getPlayers().count(",") == 1:
+                tob_duo.append(pb)
+            if pb.getPlayers().count(",") == 2:
+                tob_trio.append(pb)
+            if pb.getPlayers().count(",") == 3:
+                tob_4.append(pb)
+            if pb.getPlayers().count(",") == 4:
+                tob_5.append(pb)
+        elif pb.getBossName() == "Fight Caves":
+            if pb.getPlayers().count(",") == 0:
+                fight_caves.append(pb)
+        elif pb.getBossName() == "6 Jads":
+            if pb.getPlayers().count(",") == 0:
+                six_jads.append(pb)
+        elif pb.getBossName() == "Corrupted Gauntlet":
+            if pb.getPlayers().count(",") == 0:
+                c_gauntlet.append(pb)
+        elif pb.getBossName() == "The Inferno":
+            if pb.getPlayers().count(",") == 0:
+                inferno.append(pb)
 
         inc += 1
 
@@ -531,9 +531,9 @@ async def update_pbs():
         index = 0
         for pb in cat:
             ids = []
-            if (pb['Players'] not in players):
-                ids.append(pb['Players'].split(","))
-                players.append(pb['Players'])
+            if (pb.getPlayers() not in players):
+                ids.append(pb.getPlayers().split(","))
+                players.append(pb.getPlayers())
                 guild = get(bot.guilds, id = SERVER_ID)
                 
                 try:
@@ -551,7 +551,6 @@ async def update_pbs():
                                     if str(role.id) in MEMBERS_ROLES:
                                         nonMemberFound = False
                                     
-                            
                                 if nonMemberFound:
                                     if index not in invalid_indexs:
                                         invalid_indexs.append(index)
@@ -625,7 +624,7 @@ async def refreshPbChannel():
 
 # Sort array by time
 def sort_key(pb):
-    return pb['Time']
+    return pb.getTime()
 
 
 # Turn seconds into h:mm:ss/mm:ss/m:ss 
@@ -670,14 +669,14 @@ async def addPbToChannel(size, list, channel):
         proof = ""
         if list[0] != 0:
             message += "```yaml"
-            message += "\n1st: " + str(convertTime(list[0]['Time'])) + " - " + str(await convertPlayers(list[0]['Players']))
-            proof += "<" + str(list[0]['Proof']) + "\>"
+            message += "\n1st: " + str(convertTime(list[0].getTime())) + " - " + str(await convertPlayers(list[0].getPlayers()))
+            proof += "<" + str(list[0].getProof()) + "\>"
         if list[1] != 0:
-            message += "\n2nd: " + str(convertTime(list[1]['Time'])) + " - " + str(await convertPlayers(list[1]['Players']))
-            proof += "\n<" + str(list[1]['Proof']) + "\>"
+            message += "\n2nd: " + str(convertTime(list[1].getTime())) + " - " + str(await convertPlayers(list[1].getPlayers()))
+            proof += "\n<" + str(list[1].getProof()) + "\>"
         if list[2] != 0:
-            message += "\n3rd: " + str(convertTime(list[2]['Time'])) + " - " + str(await convertPlayers(list[2]['Players']))
-            proof += "\n<" + str(list[2]['Proof']) + "\>"
+            message += "\n3rd: " + str(convertTime(list[2].getTime())) + " - " + str(await convertPlayers(list[2].getPlayers()))
+            proof += "\n<" + str(list[2].getProof()) + "\>"
         if (proof != ""):
             message += "```"
             message += proof
