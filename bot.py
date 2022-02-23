@@ -17,7 +17,10 @@ import os
 import difflib
 
 from PersonalBest import PersonalBest
+from PersonalBestBossName import PersonalBestBossName
 from PersonalBestStatus import PersonalBestStatus
+from PersonalBestCategory import PersonalBestCategory
+from PersonalBestScale import PersonalBestScale
 
 env_path = Path('.')/'.env'
 load_dotenv(dotenv_path=env_path)
@@ -70,13 +73,26 @@ dmCloseTimes = []
 
 # List of PersonalBest objects who have an open pb submission
 pendingPBs = []
-# List containing the downloaded database for local use
+# List of PersonalBest objects downloaded from the AWS database
 pbDatabase = []
-# List containing top 3 times of each pb, in order that they are displayed in pb channel
-top3Pbs = []
 
-# List of PB Bosses
-pbBosses = ["Chambers of Xeric (Challenge mode)", "Chambers of Xeric", "Theatre of Blood", "6 Jads", "Fight Caves", "Corrupted Gauntlet", "The Inferno"]
+# List of PersonalBestCategory objects for storing PersonalBest objects, to manipulate for hiscores
+pbCategories = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC, PersonalBestScale.SOLO),
+                PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.SOLO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.FIVE_MAN), 
+                PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.DUO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FOUR_MAN), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FIVE_MAN), 
+                PersonalBestCategory(PersonalBestBossName.INFERNO, PersonalBestScale.SOLO), 
+                PersonalBestCategory(PersonalBestBossName.FIGHT_CAVES, PersonalBestScale.SOLO), 
+                PersonalBestCategory(PersonalBestBossName.SIX_JADS, PersonalBestScale.SOLO), 
+                PersonalBestCategory(PersonalBestBossName.CORRUPTED_GAUNTLET, PersonalBestScale.SOLO)]
+
+top3Pbs = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC, PersonalBestScale.SOLO),
+                PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.SOLO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.FIVE_MAN), 
+                PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.DUO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FOUR_MAN), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FIVE_MAN), 
+                PersonalBestCategory(PersonalBestBossName.INFERNO, PersonalBestScale.SOLO), 
+                PersonalBestCategory(PersonalBestBossName.FIGHT_CAVES, PersonalBestScale.SOLO), 
+                PersonalBestCategory(PersonalBestBossName.SIX_JADS, PersonalBestScale.SOLO), 
+                PersonalBestCategory(PersonalBestBossName.CORRUPTED_GAUNTLET, PersonalBestScale.SOLO)]
+
 # List of Abbreviations for PB Bosses that auto predictor could miss
 bossAbbreviations = {
   "tob": "Theatre of Blood",
@@ -93,13 +109,7 @@ lastRefresh = [datetime.datetime.now()]
 @bot.event
 async def on_ready():
     get_db()
-    #populate top3pbs with false data to prevent null pointers
-    for i in range(12):
-        pbs = [0,0,0]
-        top3Pbs.append(pbs)
-    
     await update_pbs()
-
     checkStoredDateTimes.start()
     recheckPbs.start()
     checkPbSubmissions.start()
@@ -150,17 +160,6 @@ async def event(ctx):
     appsOpen[0] = True
     await ctx.send("Apps opened.")
 
-@bot.command(name='refreshpbs')
-@commands.has_role(OFFICIAL_ROLE_ID)
-async def event(ctx):
-    top3Pbs.clear()
-    for i in range(13):
-        pbs = [0,0,0]
-        top3Pbs.append(pbs)
-    await update_pbs()
-    await ctx.send("Force refresh complete.")
-
-
 #apply
 @bot.command(name='apply')
 async def event(ctx):
@@ -188,7 +187,7 @@ async def event(ctx):
         if not found:
             now = datetime.datetime.now()
             now_plus_60 = now + datetime.timedelta(seconds = 60)
-            pb = PersonalBest(member, "bossName", "bossGuess", "players", 0, "proof", now_plus_60, PersonalBestStatus.CREATING, 0)        
+            pb = PersonalBest(member, "bossName", "bossGuess", "players", 0, "proof", now_plus_60, PersonalBestStatus.CREATING, 0, None)        
             pendingPBs.append(pb)
 
 #cancel
@@ -250,13 +249,14 @@ async def on_message(reply):
                         await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself.")
 
                 elif pb.getBossName() == "bossName":
-                    if pb.getBossGuess() == "bossGuess":
+                    if pb.getBossGuess() == "bossGuess":                        
                         for abbreviation, bossName in bossAbbreviations.items():
                             if abbreviation in reply.content.lower():
-                                pb.setBossGuess(bossName)
+                                message = await reply.channel.send (reply.author.mention + " Do you mean '" + str(bossName) + "'? (Yes/No)")
+                                pb.setBossGuess(convertToPersonalBestBossName(bossName))
                         if pb.getBossGuess() == "bossGuess":
-                            pb.setBossGuess(difflib.get_close_matches(reply.content, pbBosses, n = 3, cutoff = 0.01)[0])
-                        message = await reply.channel.send (reply.author.mention + " Do you mean '" + str(pb.getBossGuess()) + "'? (Yes/No)")
+                            message = await reply.channel.send (reply.author.mention + " Do you mean '" + str(difflib.get_close_matches(reply.content, [e.value for e in PersonalBestBossName], n = 3, cutoff = 0.01)[0]) + "'? (Yes/No)")
+                            pb.setBossGuess(difflib.get_close_matches(reply.content, [e.value for e in PersonalBestBossName], n = 3, cutoff = 0.01)[0])
                     else:
                         if reply.content.lower() == "no":
                             pb.setBossGuess("bossGuess")
@@ -293,7 +293,8 @@ async def on_message(reply):
                     await message.add_reaction('❌')
                     pb.setMessageID(message.id)
                     pb.setStatus(PersonalBestStatus.PENDING)
-
+                    pb.setScale(calculateScale(pb.getPlayers()))
+                    
 @bot.event
 async def on_raw_reaction_add(payload):
     for message in pendingApps:
@@ -454,7 +455,7 @@ def get_db():
     pbDatabase.clear()
     awsDownload = (response['Items'])
     for pb in awsDownload:
-        pbDatabase.append(PersonalBest(None, pb['BossName'], None, pb['Players'], pb['Time'], pb['Proof'], None, None, None))
+        pbDatabase.append(PersonalBest(None, convertToPersonalBestBossName(pb['BossName']), None, pb['Players'], pb['Time'], pb['Proof'], None, None, None, calculateScale(pb['Players'])))
     
     # Turn mm:ss strings into datetime
     for pb in pbDatabase:
@@ -467,130 +468,63 @@ def get_db():
 # update pb leaderboards channel
 async def update_pbs():
     get_db()
-    #ugly af... but for whatever reason declaring them at same time causing issues 
-    cox_solo = []
-    cox_cm_solo = []
-    cox_cm_trio = []
-    cox_cm_5 = []
-    tob_duo = []
-    tob_trio = []
-    tob_4 = []
-    tob_5 = []
-    inferno = []
-    fight_caves = []
-    six_jads = []
-    c_gauntlet = []
-    categories = [cox_solo, cox_cm_solo, cox_cm_trio, cox_cm_5, tob_duo, tob_trio, tob_4, tob_5, inferno, fight_caves, six_jads, c_gauntlet]
-    inc = 0
 
-    # Sort pbs into individual arrays - needs a cleaner solution tbh 
+    # sort into individual PersonalBestCategory objects
+    print (len(pbDatabase))
     for pb in pbDatabase:
-        if pb.getBossName() == "Chambers of Xeric (Challenge mode)":
-            if pb.getPlayers().count(",") == 0:
-                cox_cm_solo.append(pb)
-            if pb.getPlayers().count(",") == 2:
-                cox_cm_trio.append(pb)
-            if pb.getPlayers().count(",") == 4:
-                cox_cm_5.append(pb)
-        elif pb.getBossName() == "Chambers of Xeric":
-            if pb.getPlayers().count(",") == 0:
-                cox_solo.append(pb)
-        elif pb.getBossName() == "Theatre of Blood":
-            if pb.getPlayers().count(",") == 1:
-                tob_duo.append(pb)
-            if pb.getPlayers().count(",") == 2:
-                tob_trio.append(pb)
-            if pb.getPlayers().count(",") == 3:
-                tob_4.append(pb)
-            if pb.getPlayers().count(",") == 4:
-                tob_5.append(pb)
-        elif pb.getBossName() == "Fight Caves":
-            if pb.getPlayers().count(",") == 0:
-                fight_caves.append(pb)
-        elif pb.getBossName() == "6 Jads":
-            if pb.getPlayers().count(",") == 0:
-                six_jads.append(pb)
-        elif pb.getBossName() == "Corrupted Gauntlet":
-            if pb.getPlayers().count(",") == 0:
-                c_gauntlet.append(pb)
-        elif pb.getBossName() == "The Inferno":
-            if pb.getPlayers().count(",") == 0:
-                inferno.append(pb)
+        for pbCategory in pbCategories:
+            if pb.getBossName() == pbCategory.getBossName():
+                if pb.getScale() == pbCategory.getScale():
+                    if pb not in pbCategory.getPbList():
+                        pbCategory.addPb(pb)
+                        break
 
-        inc += 1
+    for cat in pbCategories:
+        print(cat.getBossName())
+        print(len(cat.getPbList()))
+        #for pb in cat.getPbList():
+            #print(pb.asString())
 
-    inc = 0
-    for cat in categories:
-        cat.sort(key=sort_key)
+    for pbCategory in pbCategories:
+        pbCategory.sort()
 
-        # Used to find indexs of non duplicate pb entries from same people. These are already sorted by time so keeping the first entry of each person works
-        # Also used to check UID for if sanity member or not
-        players = []
-        valid_indexs = []
-        invalid_indexs = []
-        index = 0
-        for pb in cat:
-            ids = []
-            if (pb.getPlayers() not in players):
-                ids.append(pb.getPlayers().split(","))
-                players.append(pb.getPlayers())
-                guild = get(bot.guilds, id = SERVER_ID)
-                
+        for pb in pbCategory.getPbList():
+            for player in pb.getPlayers().split(","):
                 try:
-                    for uids in ids:
-                        if isinstance(uids, list):
-                            nonMemberFound = True
-                            for uid in uids:
-                                nonMemberFound = True
-                                guild = get(bot.guilds, id = SERVER_ID)
-                                member = guild.get_member(int(uid))
-
-                                roles = member.roles
-                            
-                                for role in roles:
-                                    if str(role.id) in MEMBERS_ROLES:
-                                        nonMemberFound = False
+                    guild = get(bot.guilds, id = SERVER_ID)
+                    member = guild.get_member(int(player))
+                    found = False
+                    for role in member.roles:
+                        if str(role.id) in MEMBERS_ROLES:
+                            found = True
+                    if not found:
+                        pbCategory.removePb(pb)
                                     
-                                if nonMemberFound:
-                                    if index not in invalid_indexs:
-                                        invalid_indexs.append(index)
-                                        if index in valid_indexs:
-                                            valid_indexs.remove(index)
-                                else:
-                                    if index not in invalid_indexs:
-                                        if index not in valid_indexs:
-                                            valid_indexs.append(index)
-                        else:  
-                            guild = get(bot.guilds, id = SERVER_ID)
-                            member = guild.get_member(int(uids))
-
-                            roles = member.roles
-                            for role in roles:
-                                if str(role.id) in MEMBERS_ROLES:
-                                    valid_indexs.append(index)
-                                else:
-                                    invalid_indexs.append(index)
                 except:
                     #Non sanity member as not in discord (uid lookup failed)
-                    if index not in invalid_indexs:
-                        invalid_indexs.append(index)
-                        if index in valid_indexs:
-                            valid_indexs.remove(index)
-                    pass
- 
-            index += 1
+                    pbCategory.removePb(pb)
+                    break
 
+
+    #for pbCategory in pbCategories:
+    #    for pb in pbCategory.getPbList():
+    #        print(pb.asString() + " in: " + str(pbCategory.getBossName()))
+    #for top3pb in top3Pbs:
+        #for pbz in top3pb.getPbList():
+            #print("aaa" + str(pbz.asString()))
+
+    for top3pb in top3Pbs:
         for i in range(3):
-            if (len(valid_indexs) > i):
-                if top3Pbs[inc][i] != cat[valid_indexs[i]]:
-                    pbsRequireUpdate[0] = True
-                    top3Pbs[inc][i] = cat[valid_indexs[i]]
-            elif top3Pbs[inc][i] != 0:
-                top3Pbs[inc][i] = 0
+            if (len(pbCategory.getPbList()) > i):
+                if top3pb.getBossName().value == pbCategory.getBossName():
+                    if top3pb.getPbList()[i] != pbCategory.getPbList()[i]:
+                        pbsRequireUpdate[0] = True
+                        top3pb.getPbList()[i] = pbCategory.getPbList()[i]
+            elif top3pb.getPbList()[i] != None:
+                top3pb.getPbList()[i] = None
                 pbsRequireUpdate[0] = True
+
         
-        
-        inc += 1
 
     if pbsRequireUpdate[0]:
         await refreshPbChannel()
@@ -600,7 +534,6 @@ async def refreshPbChannel():
     lastRefresh[0] = datetime.datetime.now() + datetime.timedelta(minutes = 5)
     guild = get(bot.guilds, id = SERVER_ID)
     pb_leaderboard = get(guild.channels, id = PB_LEADERBOARD_ID)
-    sizes = ["Solo", "Solo", "Trio", "5man", "Duo", "Trio", "4man", "5man", "Inferno", "Fight Caves", "6 Jads", "Corrupted Gauntlet"]
     await pb_leaderboard.purge(limit = 200)
     # PBs building in discord
     for category in top3Pbs:
@@ -617,15 +550,10 @@ async def refreshPbChannel():
         elif top3Pbs.index(category) == 11:
             await pb_leaderboard.send(file=discord.File('resources/banners/c_gauntlet.png'))
 
-        await addPbToChannel(sizes[top3Pbs.index(category)], category, pb_leaderboard)
+        await addPbToChannel(category, pb_leaderboard, category[0].getScale())
 
 
     pbsRequireUpdate[0] = False
-
-# Sort array by time
-def sort_key(pb):
-    return pb.getTime()
-
 
 # Turn seconds into h:mm:ss/mm:ss/m:ss 
 def convertTime(inputTime):
@@ -654,35 +582,56 @@ async def convertPlayers(players):
                 playerNicks.append(member.display_name)
             except:
                 print("[WARNING] Id thrown when trying to find disord member: " + str(intID))
+            
     else:
-        member = guild.get_member(int(players))
+        try:
+            print(str(int(players)))
+            member = guild.get_member(int(players))
+            print(member)
+        except:
+                print("[WARNING] Id thrown when trying to find disord member: " + str(int(players)))
         return member.display_name
 
     return ", ".join(playerNicks)
 
 # Add pb to channel
-async def addPbToChannel(size, list, channel):
-    # Catch for false data we filled with earlier
-    if list[0] != 0:
-        emoji = discord.utils.get(bot.emojis, name='bullet')
-        message = (str(emoji) + " **" + size + "**")
-        proof = ""
-        if list[0] != 0:
-            message += "```yaml"
-            message += "\n1st: " + str(convertTime(list[0].getTime())) + " - " + str(await convertPlayers(list[0].getPlayers()))
-            proof += "<" + str(list[0].getProof()) + "\>"
-        if list[1] != 0:
-            message += "\n2nd: " + str(convertTime(list[1].getTime())) + " - " + str(await convertPlayers(list[1].getPlayers()))
-            proof += "\n<" + str(list[1].getProof()) + "\>"
-        if list[2] != 0:
-            message += "\n3rd: " + str(convertTime(list[2].getTime())) + " - " + str(await convertPlayers(list[2].getPlayers()))
-            proof += "\n<" + str(list[2].getProof()) + "\>"
+async def addPbToChannel(category, channel, scale):
+    # Catch for false data we filled with earlier (0 being false data/empty)
+    emoji = discord.utils.get(bot.emojis, name='bullet')
+    message = (str(emoji) + " **" + str(scale) + "**")
+    message += "```yaml"
+    proof = ""
+    if len(category) > 0:
+        for cat in category:
+            message += "\n1st: " + str(convertTime(cat.getTime())) + " - " + str(await convertPlayers(cat.getPlayers()))
+            proof += "\n<" + str(cat.getProof()) + "\>"
         if (proof != ""):
             message += "```"
             message += proof
         await channel.send(message)
     else:
         await channel.send("*No PBs found for category*")
+
+    #if category[0] != 0:
+    #    emoji = discord.utils.get(bot.emojis, name='bullet')
+    #    message = (str(emoji) + " **" + category[0].getScale() + "**")
+    #    proof = ""
+    #    if category[0] != 0:
+    #        message += "```yaml"
+    #        message += "\n1st: " + str(convertTime(category[0].getTime())) + " - " + str(await convertPlayers(category[0].getPlayers()))
+    #        proof += "<" + str(category[0].getProof()) + "\>"
+    #    if category[1] != 0:
+    #        message += "\n2nd: " + str(convertTime(category[1].getTime())) + " - " + str(await convertPlayers(category[1].getPlayers()))
+    #        proof += "\n<" + str(category[1].getProof()) + "\>"
+    #    if category[2] != 0:
+    #        message += "\n3rd: " + str(convertTime(category[2].getTime())) + " - " + str(await convertPlayers(category[2].getPlayers()))
+    #        proof += "\n<" + str(category[2].getProof()) + "\>"
+    #    if (proof != ""):
+    #        message += "```"
+    #        message += proof
+    #    await channel.send(message)
+    #else:
+    #    await channel.send("*No PBs found for category*")
 
 # Used for turning pb group size into strings to match the sheets used
 def convertForSheet(length):
@@ -698,6 +647,29 @@ def convertForSheet(length):
         return "5 Man"
     else:  
         return "0"
+
+def calculateScale(string):
+    if string.count(",") == 0:
+        return PersonalBestScale.SOLO
+    elif string.count(",") == 1:
+        return PersonalBestScale.DUO
+    elif string.count(",") == 2:
+        return PersonalBestScale.TRIO
+    elif string.count(",") == 3:
+        return PersonalBestScale.FOUR_MAN
+    elif string.count(",") == 4:
+        return PersonalBestScale.FIVE_MAN
+    else: 
+        return PersonalBestScale.UNKNOWN
+
+def convertToPersonalBestBossName(bossName):
+    pbBossesName = []
+    pbBossesValue = []
+    for boss in PersonalBestBossName:
+        pbBossesName.append(boss)
+        pbBossesValue.append(boss.value)
+
+    return pbBossesName[pbBossesValue.index(difflib.get_close_matches(bossName, pbBossesValue, n = 3, cutoff = 0.01)[0])]
 
 # Used to download PBs from sheets and insert into db. The data on sheets does need to be edited slightly before using this. Will need updating if needs running in the future
 async def download_sheets():
