@@ -9,6 +9,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials, _JWTAccessCredentials
 from datetime import date
 import datetime
+from dateutil import relativedelta
 import boto3
 import re
 from dotenv import load_dotenv
@@ -16,11 +17,11 @@ from pathlib import Path
 import os
 import difflib
 
-from PersonalBest import PersonalBest
-from PersonalBestBossName import PersonalBestBossName
-from PersonalBestStatus import PersonalBestStatus
-from PersonalBestCategory import PersonalBestCategory
-from PersonalBestScale import PersonalBestScale
+from PersonalBest.PersonalBest import PersonalBest
+from PersonalBest.PersonalBestBossName import PersonalBestBossName
+from PersonalBest.PersonalBestStatus import PersonalBestStatus
+from PersonalBest.PersonalBestCategory import PersonalBestCategory
+from PersonalBest.PersonalBestScale import PersonalBestScale
 
 env_path = Path('.')/'.env'
 load_dotenv(dotenv_path=env_path)
@@ -40,7 +41,8 @@ pbLogSheet = diary_hiscores_spreadsheet.worksheet(os.getenv("SHEETS_PBLOG_SHEET"
 TOKEN = os.getenv("DISCORD_TOKEN")
 intents = discord.Intents.default()
 intents.members = True
-bot = commands.Bot(command_prefix=os.getenv("DISCORD_PREFIX"), case_insensitive=True, intents=intents)
+activity = discord.Game(name="Sanity Bot v2 by jajack#2361")
+bot = commands.Bot(command_prefix=os.getenv("DISCORD_PREFIX"), activity = activity, case_insensitive=True, intents=intents)
 
 # discord vars
 BOT_UID = int(os.getenv("DISCORD_BOT_UID"))
@@ -56,7 +58,7 @@ TRIAL_MEMBER_ROLE_ID = int(os.getenv("SERVER_TRIAL_MEMBER_ROLE_ID"))
 MEMBERS_CHAT_ID = int(os.getenv("SERVER_MEMBERS_CHAT_ID"))
 SERVER_ID = int(os.getenv("SERVER_SERVER_ID"))
 OFFICIAL_ROLE_ID = int(os.getenv("SERVER_OFFICIAL_ROLE_ID"))
-MEMBERS_ROLES = os.getenv("SERVER_MEMBERS_ROLES")
+MEMBERS_ROLES = os.getenv("SERVER_MEMBERS_ROLES").split(",")
 
 # Setup Database Connection
 boto3_client = boto3.client('dynamodb',aws_access_key_id=os.getenv("AWS_ACCESS"), aws_secret_access_key=os.getenv("AWS_SECRET"), region_name=os.getenv("AWS_REGION"))
@@ -108,7 +110,10 @@ lastRefresh = [datetime.datetime.now()]
 
 @bot.event
 async def on_ready():
-    get_db()
+    for cat in top3Pbs:
+        cat.addPb(0)
+        cat.addPb(1)
+        cat.addPb(2)
     await update_pbs()
     checkStoredDateTimes.start()
     recheckPbs.start()
@@ -140,12 +145,17 @@ async def checkStoredDateTimes():
             dmCloseTimes.remove(dateTime)
 
     for pb in pendingPBs:
-        if pb.getTimeoutTime() < now  and pb.getStatus() == PersonalBestStatus.CREATING:
-            guild = get(bot.guilds, id = SERVER_ID)
-            pb_submissions = get(guild.channels, id = PB_SUBMISSIONS_ID)
-            member = pb.getSubmitter()
-            await pb_submissions.send(member.mention + " Submission timed out. Please start a new submission.")
-            pendingPBs.remove(pb)
+        if pb.getTimeoutTime() < now:
+            if pb.getStatus() == PersonalBestStatus.CREATING:
+                guild = get(bot.guilds, id = SERVER_ID)
+                pb_submissions = get(guild.channels, id = PB_SUBMISSIONS_ID)
+                member = pb.getSubmitter()
+                pb.addMessageToDelete(await pb_submissions.send(member.mention + " Submission timed out. Please start a new submission."))
+                pendingPBs.remove(pb)
+                for message in pb.getMessagesToDelete():
+                    await message.delete()
+                for message in pb.getMessagesToKeep():
+                    await message.delete()
 
 
 @bot.command(name='closeapps')
@@ -178,26 +188,75 @@ async def event(ctx):
 @bot.command(name='pb')
 async def event(ctx):
     member = ctx.author
-    found = False
+    pbFound = False
     if (member.id != BOT_UID and ctx.channel.id == PB_SUBMISSIONS_ID):
         for pb in pendingPBs:
-            if pb.submitter == member and pb.getStatus() == PersonalBestStatus.CREATING:
-                found = True
-
-        if not found:
+            if pb.getSubmitter() == member and pb.getStatus() == PersonalBestStatus.CREATING:
+                pbFound = True
+        if not pbFound:
             now = datetime.datetime.now()
             now_plus_60 = now + datetime.timedelta(seconds = 60)
-            pb = PersonalBest(member, "bossName", "bossGuess", "players", 0, "proof", now_plus_60, PersonalBestStatus.CREATING, 0, None)        
+            pb = PersonalBest("bossName", "players", 0, "proof", PersonalBestScale.UNKNOWN, member, "bossGuess", PersonalBestStatus.CREATING, now_plus_60)        
             pendingPBs.append(pb)
+            pb.addMessageToDelete(ctx.message)
 
 #cancel
 @bot.command(name='cancel')
 async def event(ctx):
     if (ctx.channel.id == PB_SUBMISSIONS_ID):
         for pb in pendingPBs:
-            if pb.submitter == ctx.author and pb.getStatus() == PersonalBestStatus.CREATING:
-                await ctx.send(ctx.author.mention + " Submission canceled.")
+            if pb.getSubmitter() == ctx.author and pb.getStatus() == PersonalBestStatus.CREATING:
+                pb.addMessageToDelete(await ctx.send(ctx.author.mention + " Submission canceled."))
+                pb.addMessageToDelete(ctx.message)
+                for message in pb.getMessagesToDelete():
+                    await message.delete()
+                for message in pb.getMessagesToKeep():
+                    await message.delete()
                 pendingPBs.remove(pb)
+
+#age
+@bot.command(name='age')
+async def event(ctx, *, arg = ""):
+        completeSheet = pointsSheet.get_all_values()
+        nameFound = False
+        name = ""
+
+        if arg != "":
+            name = arg
+        else:
+            name = ctx.author.display_name
+
+        for entry in completeSheet:
+            if entry[0] == name:
+                if entry[19].count("/") == 2:
+                    month = entry[19].split("/")[0]
+                    day = entry[19].split("/")[1]
+                    year = entry[19].split("/")[2]
+                    joinDate = date(int(year), int(month), int(day))
+                    todayDate = date.today()
+                    diff = relativedelta.relativedelta(joinDate, todayDate)
+                    timeAgo = ""
+
+                    if abs(diff.years) > 0:
+                        timeAgo += str(abs(diff.years)) + " year(s), "
+                        timeAgo += str(abs(diff.months)) + " month(s), "
+                        timeAgo += str(abs(diff.days)) + " day(s)"
+                    elif abs(diff.months) > 0:
+                        timeAgo += str(abs(diff.months)) + " month(s), "
+                        timeAgo += str(abs(diff.days)) + " day(s)"
+                    else: 
+                        timeAgo += str(abs(diff.days)) + " day(s)"
+
+
+                    await ctx.send(name + " joined on: " + str(joinDate) + ". This was " + timeAgo + " ago.")
+
+                else: 
+                    await ctx.send(name + " joined on: unknown.")
+
+                nameFound = True
+
+        if not nameFound:
+            await ctx.send(name + " was not found in the spreadsheet. Please re-enter the name exactly as shown in discord.")
 
 
 @bot.event
@@ -225,16 +284,17 @@ async def on_message(reply):
                 openDms.remove(member)
     # If in pending PBs, assume its for a PB
     for pb in pendingPBs:
-        if reply.author == pb.submitter and pb.getStatus() == PersonalBestStatus.CREATING:
+        if reply.author == pb.getSubmitter() and pb.getStatus() == PersonalBestStatus.CREATING:
             if (reply.channel.id == PB_SUBMISSIONS_ID):
                 if pb.getProof() == "proof":
                     # this will never break i promise..
                     if "imgur." in reply.content:
                         pb.setProof(reply.content)
-                        await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself.")
+                        pb.addMessageToKeep(reply)
+                        pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself."))
                     else:
-                        await reply.channel.send(reply.author.mention + " Please provide image proof (Imgur only).")
-
+                        pb.addMessageToDelete(message = await reply.channel.send(reply.author.mention + " Please provide image proof (Imgur only)."))
+                        pb.addMessageToDelete(reply)
                 elif pb.getPlayers() == "players":
                     try:
                         IDs = reply.content.split(" ")
@@ -244,44 +304,45 @@ async def on_message(reply):
                             names.append(intID)
 
                         pb.setPlayers(names)
-                        await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
+                        pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for."))
+                        pb.addMessageToKeep(reply)
                     except:
-                        await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself.")
-
+                        pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself."))
+                        pb.addMessageToDelete(reply)
                 elif pb.getBossName() == "bossName":
+                    pb.addMessageToDelete(reply)
                     if pb.getBossGuess() == "bossGuess":                        
                         for abbreviation, bossName in bossAbbreviations.items():
                             if abbreviation in reply.content.lower():
-                                message = await reply.channel.send (reply.author.mention + " Do you mean '" + str(bossName) + "'? (Yes/No)")
+                                pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Do you mean '" + str(bossName) + "'? (Yes/No)"))
                                 pb.setBossGuess(convertToPersonalBestBossName(bossName))
                         if pb.getBossGuess() == "bossGuess":
-                            message = await reply.channel.send (reply.author.mention + " Do you mean '" + str(difflib.get_close_matches(reply.content, [e.value for e in PersonalBestBossName], n = 3, cutoff = 0.01)[0]) + "'? (Yes/No)")
+                            pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Do you mean '" + str(difflib.get_close_matches(reply.content, [e.value for e in PersonalBestBossName], n = 3, cutoff = 0.01)[0]) + "'? (Yes/No)"))
                             pb.setBossGuess(difflib.get_close_matches(reply.content, [e.value for e in PersonalBestBossName], n = 3, cutoff = 0.01)[0])
                     else:
                         if reply.content.lower() == "no":
                             pb.setBossGuess("bossGuess")
-                            await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for.")
+                            pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for."))
                         elif reply.content.lower() == "yes":
-                            await reply.channel.send(reply.author.mention + "  Please enter your time in mm:ss format.")
+                            pb.addMessageToDelete(await reply.channel.send(reply.author.mention + "  Please enter your time in mm:ss format."))
                             pb.setBossName(pb.getBossGuess())
                         else:
-                            await reply.channel.send(reply.author.mention + " yes or no only please.")
-
+                            pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " yes or no only please."))
                 elif pb.getTime() == 0:
+                    pb.addMessageToDelete(reply)
                     if (re.search("[0-9]{1,3}:[0-5]{1}[0-9]{1}", reply.content) and reply.content[len(reply.content) - 3] == ":"):
                         pb.setTime(reply.content)
                     else:
-                        await reply.channel.send(reply.author.mention + " Please enter your time in mm:ss format.")
-
-                # Every message in pb channel from them resets timeout timer to 60seconds
+                        pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please enter your time in mm:ss format."))
+                    
+                # Every message in pb channel from the submitter resets timeout timer to 60seconds
                 now = datetime.datetime.now()
                 now_plus_60 = now + datetime.timedelta(seconds = 60)
                 pb.setTimeoutTime(now_plus_60)
                         
-       
                 # If time is filled, assume completed PB submission
                 if pb.getTime() != 0:
-                    await reply.channel.send(reply.author.mention + " Submission complete. Please wait for approval.")
+                    pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Submission complete. Please wait for approval."))
                     guild = get(bot.guilds, id = SERVER_ID)
                     pending_pbs = get(guild.channels, id = PENDING_PBS_ID)
                     message = await pending_pbs.send("New pb submission for: " +  ', '.join(guild.get_member(name).mention for name in pb.getPlayers()) +
@@ -294,6 +355,8 @@ async def on_message(reply):
                     pb.setMessageID(message.id)
                     pb.setStatus(PersonalBestStatus.PENDING)
                     pb.setScale(calculateScale(pb.getPlayers()))
+                    for message in pb.getMessagesToDelete():
+                        await message.delete()
                     
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -383,6 +446,8 @@ async def on_raw_reaction_add(payload):
                 for role in payload.member.roles:
                     roleIds.append(role.id)
                 if(OFFICIAL_ROLE_ID in roleIds or payload.member.id == DEV_UID):
+                    channel = bot.get_channel(payload.channel_id)
+                    message = await channel.fetch_message(payload.message_id)
                     if (payload.emoji.name == '✔️'):
                         await put_pb(pb.getBossName(), pb.getNames(), pb.getProof(), pb.getTime())
                         await message.clear_reaction('✔️')
@@ -395,8 +460,9 @@ async def on_raw_reaction_add(payload):
                         channel = await user.create_dm()
                         await channel.send("Your pb submission has been declined. Please private message " + payload.member.name + " if you wish to find out why.")
                         pendingPBs.remove(pb)
+                        for message in pb.getMessagesToKeep():
+                            await message.delete()
                 
-
 #insert pb to database & spreadsheet
 async def put_pb(bossname, players, proof, time):
     playernames = ""
@@ -405,8 +471,6 @@ async def put_pb(bossname, players, proof, time):
         playernames = ','.join(str(player) for player in players)
     else:
         playernames = str(players[0])
-
-    #playernames = str(players)
 
     #database
     boto3_client.put_item(TableName='Submitted_PBs', Item={
@@ -441,10 +505,6 @@ async def put_pb(bossname, players, proof, time):
         pbLogSheet.update_cell(row_to_update, 5, proof)
         pbLogSheet.update_cell(row_to_update, 7, row_to_update - 1)
 
-
-        #row = [str(await convertPlayers(players[i])), bossname, convertForSheet(len(players)), time, proof, "", i + row_location]
-        #pbLogSheet.insert_row(row, i + row_location + 1)
-
     get_db()
 
 
@@ -455,7 +515,10 @@ def get_db():
     pbDatabase.clear()
     awsDownload = (response['Items'])
     for pb in awsDownload:
-        pbDatabase.append(PersonalBest(None, convertToPersonalBestBossName(pb['BossName']), None, pb['Players'], pb['Time'], pb['Proof'], None, None, None, calculateScale(pb['Players'])))
+        players = pb['Players'].split(",")
+        players.sort()
+        players = ','.join(str(player) for player in players)
+        pbDatabase.append(PersonalBest(convertToPersonalBestBossName(pb['BossName']), players, pb['Time'], pb['Proof'], calculateScale(pb['Players'])))
     
     # Turn mm:ss strings into datetime
     for pb in pbDatabase:
@@ -470,61 +533,56 @@ async def update_pbs():
     get_db()
 
     # sort into individual PersonalBestCategory objects
-    print (len(pbDatabase))
     for pb in pbDatabase:
         for pbCategory in pbCategories:
             if pb.getBossName() == pbCategory.getBossName():
                 if pb.getScale() == pbCategory.getScale():
-                    if pb not in pbCategory.getPbList():
-                        pbCategory.addPb(pb)
-                        break
+                    allMembersFound = True
+                    for player in pb.getPlayers().split(","):
+                        try:
+                            individualMemberFound = False
+                            guild = get(bot.guilds, id = SERVER_ID)
+                            member = guild.get_member(int(player))
+                            for role in member.roles:
+                                if str(role.id) in MEMBERS_ROLES:
+                                    individualMemberFound = True
+                            if not individualMemberFound:
+                                allMembersFound = False
+                                            
+                        except:
+                            #Non sanity member as not in discord (uid lookup failed)
+                            allMembersFound = False
+                            break
 
-    for cat in pbCategories:
-        print(cat.getBossName())
-        print(len(cat.getPbList()))
-        #for pb in cat.getPbList():
-            #print(pb.asString())
+                    if allMembersFound:
+                        print(pb.asString())
+                        existingPbFound = False
 
+                        for personalBest in pbCategory.getPbList():
+                            if personalBest.getPlayers() == pb.getPlayers():
+                                existingPbFound = True
+                                if personalBest.getTime() > pb.getTime():
+                                    pbCategory.removePb(personalBest)
+                                    pbCategory.addPb(pb)
+                                    break
+                        
+                        if not existingPbFound:
+                            pbCategory.addPb(pb)
+   
     for pbCategory in pbCategories:
         pbCategory.sort()
 
-        for pb in pbCategory.getPbList():
-            for player in pb.getPlayers().split(","):
-                try:
-                    guild = get(bot.guilds, id = SERVER_ID)
-                    member = guild.get_member(int(player))
-                    found = False
-                    for role in member.roles:
-                        if str(role.id) in MEMBERS_ROLES:
-                            found = True
-                    if not found:
-                        pbCategory.removePb(pb)
-                                    
-                except:
-                    #Non sanity member as not in discord (uid lookup failed)
-                    pbCategory.removePb(pb)
-                    break
-
-
-    #for pbCategory in pbCategories:
-    #    for pb in pbCategory.getPbList():
-    #        print(pb.asString() + " in: " + str(pbCategory.getBossName()))
-    #for top3pb in top3Pbs:
-        #for pbz in top3pb.getPbList():
-            #print("aaa" + str(pbz.asString()))
-
-    for top3pb in top3Pbs:
-        for i in range(3):
-            if (len(pbCategory.getPbList()) > i):
-                if top3pb.getBossName().value == pbCategory.getBossName():
-                    if top3pb.getPbList()[i] != pbCategory.getPbList()[i]:
-                        pbsRequireUpdate[0] = True
-                        top3pb.getPbList()[i] = pbCategory.getPbList()[i]
-            elif top3pb.getPbList()[i] != None:
-                top3pb.getPbList()[i] = None
-                pbsRequireUpdate[0] = True
-
-        
+        for top3pb in top3Pbs:
+            for i in range(3):
+                if len(pbCategory.getPbList()) > i:
+                    if top3pb.getBossName() == pbCategory.getBossName():
+                        if top3pb.getScale() == pbCategory.getScale():
+                            if top3pb.getPbList()[i] != pbCategory.getPbList()[i]:
+                                pbsRequireUpdate[0] = True
+                                top3pb.getPbList()[i] = pbCategory.getPbList()[i]
+                elif top3pb.getPbList()[i] != None:
+                    top3pb.getPbList()[i] = None
+                    pbsRequireUpdate[0] = True
 
     if pbsRequireUpdate[0]:
         await refreshPbChannel()
@@ -550,7 +608,7 @@ async def refreshPbChannel():
         elif top3Pbs.index(category) == 11:
             await pb_leaderboard.send(file=discord.File('resources/banners/c_gauntlet.png'))
 
-        await addPbToChannel(category, pb_leaderboard, category[0].getScale())
+        await addPbToChannel(category, pb_leaderboard, category.getScale())
 
 
     pbsRequireUpdate[0] = False
@@ -585,9 +643,7 @@ async def convertPlayers(players):
             
     else:
         try:
-            print(str(int(players)))
             member = guild.get_member(int(players))
-            print(member)
         except:
                 print("[WARNING] Id thrown when trying to find disord member: " + str(int(players)))
         return member.display_name
@@ -596,15 +652,27 @@ async def convertPlayers(players):
 
 # Add pb to channel
 async def addPbToChannel(category, channel, scale):
-    # Catch for false data we filled with earlier (0 being false data/empty)
     emoji = discord.utils.get(bot.emojis, name='bullet')
-    message = (str(emoji) + " **" + str(scale) + "**")
-    message += "```yaml"
-    proof = ""
-    if len(category) > 0:
-        for cat in category:
-            message += "\n1st: " + str(convertTime(cat.getTime())) + " - " + str(await convertPlayers(cat.getPlayers()))
-            proof += "\n<" + str(cat.getProof()) + "\>"
+    scaleCount = 0
+    scaleString = ""
+    for pbCateogry in pbCategories:
+        if pbCateogry.getBossName() == category.getBossName():
+            scaleCount += 1
+    
+    if scaleCount > 1:
+        scaleString = str(scale.value)
+    else:
+        scaleString = str(category.getBossName().value)
+        
+    message = (str(emoji) + " **" + scaleString + "**")
+    positions = ["1st", "2nd", "3rd"]
+    if len(category.getPbList()) > 0:
+        message += "```yaml"
+        proof = ""
+        for pb in category.getPbList():
+            print(pb.asString())
+            message += "\n" + positions[category.getPbList().index(pb)] + ": " + str(convertTime(pb.getTime())) + " - " + str(await convertPlayers(pb.getPlayers()))
+            proof += "\n<" + str(pb.getProof()) + "\>"
         if (proof != ""):
             message += "```"
             message += proof
@@ -612,26 +680,6 @@ async def addPbToChannel(category, channel, scale):
     else:
         await channel.send("*No PBs found for category*")
 
-    #if category[0] != 0:
-    #    emoji = discord.utils.get(bot.emojis, name='bullet')
-    #    message = (str(emoji) + " **" + category[0].getScale() + "**")
-    #    proof = ""
-    #    if category[0] != 0:
-    #        message += "```yaml"
-    #        message += "\n1st: " + str(convertTime(category[0].getTime())) + " - " + str(await convertPlayers(category[0].getPlayers()))
-    #        proof += "<" + str(category[0].getProof()) + "\>"
-    #    if category[1] != 0:
-    #        message += "\n2nd: " + str(convertTime(category[1].getTime())) + " - " + str(await convertPlayers(category[1].getPlayers()))
-    #        proof += "\n<" + str(category[1].getProof()) + "\>"
-    #    if category[2] != 0:
-    #        message += "\n3rd: " + str(convertTime(category[2].getTime())) + " - " + str(await convertPlayers(category[2].getPlayers()))
-    #        proof += "\n<" + str(category[2].getProof()) + "\>"
-    #    if (proof != ""):
-    #        message += "```"
-    #        message += proof
-    #    await channel.send(message)
-    #else:
-    #    await channel.send("*No PBs found for category*")
 
 # Used for turning pb group size into strings to match the sheets used
 def convertForSheet(length):
@@ -670,112 +718,5 @@ def convertToPersonalBestBossName(bossName):
         pbBossesValue.append(boss.value)
 
     return pbBossesName[pbBossesValue.index(difflib.get_close_matches(bossName, pbBossesValue, n = 3, cutoff = 0.01)[0])]
-
-# Used to download PBs from sheets and insert into db. The data on sheets does need to be edited slightly before using this. Will need updating if needs running in the future
-async def download_sheets():
-    print("download started")
-    completeSheet = pbLogSheet.get_all_values()
-    skip = 0
-    index = 1
-    for entry in completeSheet:
-        if (skip != 0):
-            skip -= 1
-        if skip == 0:
-            if entry[2] == "Solo":
-                playername = entry[0]
-                bossname = entry[1]
-                time = entry[3]
-                proof = entry[4]
-
-            elif entry[2] == "Duo":
-                playername = entry[0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 1][0]
-                bossname = entry[1]
-                time = entry[3]
-                proof = entry[4]
-                skip = 2
-
-            elif entry[2] == "Trio":
-                playername = entry[0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 1][0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 2][0]
-                bossname = entry[1]
-                time = entry[3]
-                proof = entry[4]
-                skip = 3
-
-            elif entry[2] == "Quad":
-                playername = entry[0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 1][0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 2][0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 3][0]
-                bossname = entry[1]
-                time = entry[3]
-                proof = entry[4]
-                skip = 4
-            
-            elif entry[2] == "5 Man":
-                playername = entry[0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 1][0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 2][0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 3][0]
-                playername += "," + completeSheet[completeSheet.index(entry) + 4][0]
-                bossname = entry[1]
-                time = entry[3]
-                proof = entry[4]
-                skip = 5
-            
-            #regex was tilting me for this one ^([^:]*.[^:]*).*$ should work with re.sub but not working brainfried cba
-            timepart1 = time.split(":")[0]
-            timepart2 = time.split(":")[1]
-            timepart3 = timepart2.split(":")[0]
-            
-            time = timepart1 + ":" + timepart3
-
-            # convert playernames to uids and then we can insert data to the database
-            if "," in playername:
-                namesList = playername.split(",")
-                uidList = []
-                for name in namesList:
-                    try:
-                        uidList.append(str(discord.utils.get(bot.get_all_members(), display_name = name).id))
-                    except:
-                        print(name)
-                        break
-
-                uidList.sort()      
-                uid = ",".join(uidList)
-            else:
-                try:
-                    uid = discord.utils.get(bot.get_all_members(), display_name = playername).id
-                except:
-                    print(playername)
-                    break
-            
-            print(bossname, uid, proof, time)
-            await put_pb(bossname, uid, proof, time)
-            
-        index += 1
-    
-    print("complete download")
-
-            
-#cleardb used to empty everything from the database, usually used just before repopulating it from sheets.
-#@bot.command(name='cleardb')
-#@commands.has_role(OFFICIAL_ROLE_ID)
-#async def event(ctx):
-#    scan = boto3_resource.Table('Submitted_PBs').scan()
-#    table = boto3_resource.Table('Submitted_PBs')
-
-#    with table.batch_writer() as batch:
-#        for item in scan['Items']:
-#            batch.delete_item(
-#            Key={
-#                'SubID': item['SubID']
-#                }
-#            )
-#    print("db cleared")
-#    await update_pbs()
-
 
 bot.run(TOKEN)

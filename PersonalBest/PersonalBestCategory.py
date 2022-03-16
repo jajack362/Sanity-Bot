@@ -1,9 +1,9 @@
 class PersonalBestCategory:
-    pbList = []
 
     def __init__(self, bossName, scale):
         self.bossName = bossName
         self.scale = scale
+        self.pbList = []
 
     def getBossName(self):
         return self.bossName

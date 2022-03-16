@@ -1,5 +1,5 @@
 class PersonalBest:
-    def __init__(self, submitter, bossName, bossGuess, players, time, proof, timeoutTime, status, messageID, scale):
+    def __init__(self, bossName, players, time, proof, scale, submitter = None, bossGuess = None, status = None , timeoutTime = None):
         self.submitter = submitter
         self.bossName = bossName
         self.bossGuess = bossGuess
@@ -8,8 +8,10 @@ class PersonalBest:
         self.proof = proof
         self.timeoutTime = timeoutTime
         self.status = status
-        self.messageID = messageID
+        self.messageID = 0
         self.scale = scale
+        self.messagesToDelete = []
+        self.messagesToKeep = []
 
     def getSubmitter(self):
         return self.submitter
@@ -67,6 +69,20 @@ class PersonalBest:
 
     def setScale(self, scale):
         self.scale = scale
+
+    def addMessageToDelete(self, message):
+        if message not in self.messagesToDelete:
+            self.messagesToDelete.append(message)
+    
+    def getMessagesToDelete(self):
+        return self.messagesToDelete
+
+    def addMessageToKeep(self, message):
+        if message not in self.messagesToKeep:
+            self.messagesToKeep.append(message)
+    
+    def getMessagesToKeep(self):
+        return self.messagesToKeep
 
     def asString(self):
         return "Boss Name: " + str(self.bossName.value) + ", Players: " + str(self.players) + ", Time: " + str(self.time) + ", Proof: " + str(self.proof)
