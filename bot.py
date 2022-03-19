@@ -424,7 +424,7 @@ async def on_message(reply):
                     guild = get(bot.guilds, id = SERVER_ID)
                     pending_pbs = get(guild.channels, id = PENDING_PBS_ID)
                     message = await pending_pbs.send("New pb submission for: " +  ', '.join(guild.get_member(name).mention for name in pb.getPlayers()) +
-                    "\nBoss: " + pb.getBossName() +
+                    "\nBoss: " + str(pb.getBossName()) +
                     "\nTime: " + pb.getTime() +
                     "\nProof: " + pb.getProof())
 
