@@ -1,4 +1,8 @@
+from PersonalBest.PersonalBestDiaryLevel import PersonalBestDiaryLevel
+
+
 class PersonalBest:
+
     def __init__(self, bossName, players, time, proof, scale, submitter = None, bossGuess = None, status = None , timeoutTime = None):
         self.submitter = submitter
         self.bossName = bossName
@@ -12,6 +16,7 @@ class PersonalBest:
         self.scale = scale
         self.messagesToDelete = []
         self.messagesToKeep = []
+        self.diaryLevel = PersonalBestDiaryLevel.NONE
 
     def getSubmitter(self):
         return self.submitter
@@ -83,6 +88,12 @@ class PersonalBest:
     
     def getMessagesToKeep(self):
         return self.messagesToKeep
+    
+    def setDiaryLevel(self, diaryLevel):
+        self.diaryLevel = diaryLevel
+    
+    def getDiaryLevel(self):
+        return self.diaryLevel
 
     def asString(self):
         return "Boss Name: " + str(self.bossName.value) + ", Players: " + str(self.players) + ", Time: " + str(self.time) + ", Proof: " + str(self.proof)
