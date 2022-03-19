@@ -403,6 +403,8 @@ async def on_message(reply):
                             pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for."))
                         elif reply.content.lower() == "yes":
                             pb.addMessageToDelete(await reply.channel.send(reply.author.mention + "  Please enter your time in mm:ss format."))
+                            if isinstance(pb.getBossGuess(), str):
+                                pb.setBossGuess(convertToPersonalBestBossName(pb.getBossGuess()))
                             pb.setBossName(pb.getBossGuess())
                         else:
                             pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " yes or no only please."))
@@ -424,7 +426,7 @@ async def on_message(reply):
                     guild = get(bot.guilds, id = SERVER_ID)
                     pending_pbs = get(guild.channels, id = PENDING_PBS_ID)
                     message = await pending_pbs.send("New pb submission for: " +  ', '.join(guild.get_member(name).mention for name in pb.getPlayers()) +
-                    "\nBoss: " + str(pb.getBossName()) +
+                    "\nBoss: " + pb.getBossName().value +
                     "\nTime: " + pb.getTime() +
                     "\nProof: " + pb.getProof())
 
@@ -526,7 +528,7 @@ async def on_raw_reaction_add(payload):
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     if (payload.emoji.name == '✔️'):
-                        await put_pb(pb.getBossName(), pb.getPlayers(), pb.getProof(), pb.getTime())
+                        await put_pb(pb.getBossName().value, pb.getPlayers(), pb.getProof(), pb.getTime())
                         await message.clear_reaction('✔️')
                         await message.clear_reaction('❌')
                         pendingPBs.remove(pb)
