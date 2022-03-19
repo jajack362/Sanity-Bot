@@ -1,4 +1,5 @@
 from logging import lastResort
+from sre_constants import CATEGORY_DIGIT
 from botocore.utils import S3EndpointSetter
 from boto3.dynamodb.conditions import Key, Attr
 import discord
@@ -22,6 +23,8 @@ from PersonalBest.PersonalBestBossName import PersonalBestBossName
 from PersonalBest.PersonalBestStatus import PersonalBestStatus
 from PersonalBest.PersonalBestCategory import PersonalBestCategory
 from PersonalBest.PersonalBestScale import PersonalBestScale
+from PersonalBest.PersonalBestProfile import PersonalBestProfile
+from PersonalBest.PersonalBestDiaryLevel import PersonalBestDiaryLevel
 
 env_path = Path('.')/'.env'
 load_dotenv(dotenv_path=env_path)
@@ -47,6 +50,7 @@ bot = commands.Bot(command_prefix=os.getenv("DISCORD_PREFIX"), activity = activi
 # discord vars
 BOT_UID = int(os.getenv("DISCORD_BOT_UID"))
 DEV_UID = int(os.getenv("DISCORD_DEV_UID"))
+NON_CLANNIE_UID = int(os.getenv("DISCORD_NON_CLANNIE_UID"))
 
 #sanity disc
 PB_LEADERBOARD_ID = int(os.getenv("SERVER_PB_LEADERBOARD_ID"))
@@ -59,6 +63,7 @@ MEMBERS_CHAT_ID = int(os.getenv("SERVER_MEMBERS_CHAT_ID"))
 SERVER_ID = int(os.getenv("SERVER_SERVER_ID"))
 OFFICIAL_ROLE_ID = int(os.getenv("SERVER_OFFICIAL_ROLE_ID"))
 MEMBERS_ROLES = os.getenv("SERVER_MEMBERS_ROLES").split(",")
+BOT_COMMANDS_ID = int(os.getenv("SERVER_BOT_COMMANDS_ID"))
 
 # Setup Database Connection
 boto3_client = boto3.client('dynamodb',aws_access_key_id=os.getenv("AWS_ACCESS"), aws_secret_access_key=os.getenv("AWS_SECRET"), region_name=os.getenv("AWS_REGION"))
@@ -95,12 +100,31 @@ top3Pbs = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC, Personal
                 PersonalBestCategory(PersonalBestBossName.SIX_JADS, PersonalBestScale.SOLO), 
                 PersonalBestCategory(PersonalBestBossName.CORRUPTED_GAUNTLET, PersonalBestScale.SOLO)]
 
+# List of PersonalBestProfile objects for building the personal diary log
+pbProfiles = []
+
 # List of Abbreviations for PB Bosses that auto predictor could miss
 bossAbbreviations = {
   "tob": "Theatre of Blood",
   "cox": "Chambers of Xeric",
   "cm": "Chambers of Xeric (Challenge mode)",
   "cg": "Corrupted Gauntlet"
+}
+
+# These are stored in seconds
+diaryTimes = {
+    "Chambers of Xeric Solo" : [1800, 1500, 1200, 1020, 945],
+    "Chambers of Xeric (Challenge mode) Solo" : [3240, 2640, 2340, 2160, 1980],
+    "Chambers of Xeric (Challenge mode) Trio" : [1980, 1740, 1620, 1500, 1400],
+    "Chambers of Xeric (Challenge mode) 5man" : [1800, 1620, 1500, 1410, 1350],
+    "Theatre of Blood Duo" : [1800, 1680, 1560, 1470, 1410],
+    "Theatre of Blood Trio" : [1320, 1200, 1110, 1020, 975],
+    "Theatre of Blood 4man" : [1200, 1080, 960, 930, 855],
+    "Theatre of Blood 5man" : [1080, 990, 900, 840, 800],
+    "The Inferno Solo" : [6000, 5100, 4200, 3600, 3300],
+    "Fight Caves Solo" : [2100, 1920, 1740, 1620, 1530],
+    "6 Jads Solo" : [3600],
+    "Corrupted Gauntlet Solo" : [720, 600, 510, 420, 345],
 }
 
 appsOpen = [False]
@@ -196,7 +220,7 @@ async def event(ctx):
         if not pbFound:
             now = datetime.datetime.now()
             now_plus_60 = now + datetime.timedelta(seconds = 60)
-            pb = PersonalBest("bossName", "players", 0, "proof", PersonalBestScale.UNKNOWN, member, "bossGuess", PersonalBestStatus.CREATING, now_plus_60)        
+            pb = PersonalBest("bossName", "players", 0, "proof", PersonalBestScale.UNKNOWN, member, "bossGuess", PersonalBestStatus.CREATING, now_plus_60)      
             pendingPBs.append(pb)
             pb.addMessageToDelete(ctx.message)
 
@@ -214,49 +238,103 @@ async def event(ctx):
                     await message.delete()
                 pendingPBs.remove(pb)
 
-#age
-@bot.command(name='age')
+#profile
+@bot.command(name='diary')
 async def event(ctx, *, arg = ""):
-        completeSheet = pointsSheet.get_all_values()
-        nameFound = False
+    if ctx.channel.id == BOT_COMMANDS_ID:
         name = ""
+        nameFound = False
+        points = 0
+        emoji = discord.utils.get(bot.emojis, name='bullet')
 
         if arg != "":
             name = arg
         else:
             name = ctx.author.display_name
 
-        for entry in completeSheet:
-            if entry[0] == name:
-                if entry[19].count("/") == 2:
-                    month = entry[19].split("/")[0]
-                    day = entry[19].split("/")[1]
-                    year = entry[19].split("/")[2]
-                    joinDate = date(int(year), int(month), int(day))
-                    todayDate = date.today()
-                    diff = relativedelta.relativedelta(joinDate, todayDate)
-                    timeAgo = ""
-
-                    if abs(diff.years) > 0:
-                        timeAgo += str(abs(diff.years)) + " year(s), "
-                        timeAgo += str(abs(diff.months)) + " month(s), "
-                        timeAgo += str(abs(diff.days)) + " day(s)"
-                    elif abs(diff.months) > 0:
-                        timeAgo += str(abs(diff.months)) + " month(s), "
-                        timeAgo += str(abs(diff.days)) + " day(s)"
-                    else: 
-                        timeAgo += str(abs(diff.days)) + " day(s)"
-
-
-                    await ctx.send(name + " joined on: " + str(joinDate) + ". This was " + timeAgo + " ago.")
-
-                else: 
-                    await ctx.send(name + " joined on: unknown.")
-
+        for profile in pbProfiles:
+            if profile.getMember() == name:
                 nameFound = True
+                for pb in profile.getPbList():
+                    if pb.getDiaryLevel() == PersonalBestDiaryLevel.EASY:
+                        points += 1
+                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.MEDIUM:
+                        points += 3
+                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.HARD:
+                        points += 6
+                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.ELITE:
+                        points += 10
+                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.MASTER:
+                        points += 15
+                embed = discord.Embed(title= name + " 's Diary Profile - Total points: " + str(points) + "/166")
+                embed.set_author(name="Sanity Bot", icon_url="https://i.imgur.com/AnpyKOY.png")
 
+                for bossname in PersonalBestBossName:
+                    value = ""
+                    for scale in PersonalBestScale:
+                        for pb in profile.getPbList():
+                            if pb.getBossName().value == bossname.value:
+                                if pb.getScale() == scale:
+                                    value +=  "**" + scale.value + "**"
+                                    value +=  " - " + convertTime(pb.getTime()) + " - Diary level: " + pb.getDiaryLevel().value + "\n"
+                                    value +=  pb.getProof() + "\n\n"
+                    if value != "":
+                        embed.add_field(name = str(emoji) + " " + bossname.value, value = value, inline = False)
+
+                    
+
+                embed.set_footer(text = "Sanity Bot - PB Diary Profile")
+                await ctx.send(embed = embed)
+        
         if not nameFound:
-            await ctx.send(name + " was not found in the spreadsheet. Please re-enter the name exactly as shown in discord.")
+                await ctx.send(name + " was not found in the database. Please re-enter the name exactly as shown in discord.")
+    else:
+        channel = bot.get_channel(BOT_COMMANDS_ID)
+        await ctx.send("Please use me in " + channel.mention)
+
+#age
+@bot.command(name='age')
+async def event(ctx, *, arg = ""):
+    completeSheet = pointsSheet.get_all_values()
+    nameFound = False
+    name = ""
+
+    if arg != "":
+        name = arg
+    else:
+        name = ctx.author.display_name
+
+    for entry in completeSheet:
+        if entry[0] == name:
+            if entry[19].count("/") == 2:
+                month = entry[19].split("/")[0]
+                day = entry[19].split("/")[1]
+                year = entry[19].split("/")[2]
+                joinDate = date(int(year), int(month), int(day))
+                todayDate = date.today()
+                diff = relativedelta.relativedelta(joinDate, todayDate)
+                timeAgo = ""
+
+                if abs(diff.years) > 0:
+                    timeAgo += str(abs(diff.years)) + " year(s), "
+                    timeAgo += str(abs(diff.months)) + " month(s), "
+                    timeAgo += str(abs(diff.days)) + " day(s)"
+                elif abs(diff.months) > 0:
+                    timeAgo += str(abs(diff.months)) + " month(s), "
+                    timeAgo += str(abs(diff.days)) + " day(s)"
+                else: 
+                    timeAgo += str(abs(diff.days)) + " day(s)"
+
+
+                await ctx.send(name + " joined on: " + str(joinDate) + ". This was " + timeAgo + " ago.")
+
+            else: 
+                await ctx.send(name + " joined on: unknown.")
+
+            nameFound = True
+
+    if not nameFound:
+        await ctx.send(name + " was not found in the spreadsheet. Please re-enter the name exactly as shown in discord.")
 
 
 @bot.event
@@ -438,7 +516,6 @@ async def on_raw_reaction_add(payload):
                     except:
                         pass
                     
-
     for pb in pendingPBs:
         if payload.message_id == pb.getMessageID() and pb.getStatus() == PersonalBestStatus.PENDING:
             if payload.member.id != BOT_UID:
@@ -449,7 +526,7 @@ async def on_raw_reaction_add(payload):
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     if (payload.emoji.name == '✔️'):
-                        await put_pb(pb.getBossName(), pb.getNames(), pb.getProof(), pb.getTime())
+                        await put_pb(pb.getBossName(), pb.getPlayers(), pb.getProof(), pb.getTime())
                         await message.clear_reaction('✔️')
                         await message.clear_reaction('❌')
                         pendingPBs.remove(pb)
@@ -475,7 +552,7 @@ async def put_pb(bossname, players, proof, time):
     #database
     boto3_client.put_item(TableName='Submitted_PBs', Item={
         'SubID':{
-           'N': str(len(pbDatabase) + 9)
+           'N': str(len(pbDatabase))
         },
         'BossName':{
             'S': bossname
@@ -515,10 +592,12 @@ def get_db():
     pbDatabase.clear()
     awsDownload = (response['Items'])
     for pb in awsDownload:
-        players = pb['Players'].split(",")
-        players.sort()
-        players = ','.join(str(player) for player in players)
-        pbDatabase.append(PersonalBest(convertToPersonalBestBossName(pb['BossName']), players, pb['Time'], pb['Proof'], calculateScale(pb['Players'])))
+        if pb['BossName'] != "" and pb['Players'] != "" and pb['Time'] != "" and pb['Proof'] != "":
+            players = pb['Players'].split(",")
+            players.sort()
+            players = ','.join(str(player) for player in players)
+            pbToAdd = PersonalBest(convertToPersonalBestBossName(pb['BossName']), players, pb['Time'], pb['Proof'], calculateScale(pb['Players']))
+            pbDatabase.append(pbToAdd)
     
     # Turn mm:ss strings into datetime
     for pb in pbDatabase:
@@ -527,12 +606,14 @@ def get_db():
             m,s = pb.getTime().split(':')
             #Convert to seconds for sorting later on
             pb.setTime(datetime.timedelta(minutes=int(m),seconds=int(s)).total_seconds())
+        pb.setDiaryLevel(getDiaryLevel(pb))
 
 # update pb leaderboards channel
 async def update_pbs():
     get_db()
+    guild = get(bot.guilds, id = SERVER_ID)
 
-    # sort into individual PersonalBestCategory objects
+    # sort into individual PersonalBestCategory objects for pb hiscores, this will not add ex clan member pbs
     for pb in pbDatabase:
         for pbCategory in pbCategories:
             if pb.getBossName() == pbCategory.getBossName():
@@ -541,23 +622,39 @@ async def update_pbs():
                     for player in pb.getPlayers().split(","):
                         try:
                             individualMemberFound = False
-                            guild = get(bot.guilds, id = SERVER_ID)
                             member = guild.get_member(int(player))
-                            for role in member.roles:
-                                if str(role.id) in MEMBERS_ROLES:
-                                    individualMemberFound = True
-                            if not individualMemberFound:
+                            if player != str(NON_CLANNIE_UID):
+                                for role in member.roles:
+                                    if str(role.id) in MEMBERS_ROLES:
+                                        individualMemberFound = True
+                                if not individualMemberFound:
+                                    allMembersFound = False
+                            else:
                                 allMembersFound = False
-                                            
+                            
+                            pbAdded = False
+                            for profile in pbProfiles:
+                                if profile.getMember() == member.display_name:
+                                    for profilePb in profile.getPbList():
+                                        if profilePb.getBossName() == pb.getBossName() and profilePb.getScale() == pb.getScale():
+                                            pbAdded = True
+                                            if profilePb.getTime() > pb.getTime():
+                                                profile.removePb(profilePb)
+                                                profile.addPb(pb)
+                                    if not pbAdded:
+                                        profile.addPb(pb)
+                                        pbAdded = True
+                            if not pbAdded:
+                                profile = PersonalBestProfile(member.display_name)
+                                profile.addPb(pb)
+                                pbProfiles.append(profile)         
                         except:
                             #Non sanity member as not in discord (uid lookup failed)
                             allMembersFound = False
                             break
 
                     if allMembersFound:
-                        print(pb.asString())
                         existingPbFound = False
-
                         for personalBest in pbCategory.getPbList():
                             if personalBest.getPlayers() == pb.getPlayers():
                                 existingPbFound = True
@@ -565,13 +662,11 @@ async def update_pbs():
                                     pbCategory.removePb(personalBest)
                                     pbCategory.addPb(pb)
                                     break
-                        
                         if not existingPbFound:
                             pbCategory.addPb(pb)
-   
+
     for pbCategory in pbCategories:
         pbCategory.sort()
-
         for top3pb in top3Pbs:
             for i in range(3):
                 if len(pbCategory.getPbList()) > i:
@@ -583,7 +678,7 @@ async def update_pbs():
                 elif top3pb.getPbList()[i] != None:
                     top3pb.getPbList()[i] = None
                     pbsRequireUpdate[0] = True
-
+    
     if pbsRequireUpdate[0]:
         await refreshPbChannel()
 
@@ -670,7 +765,6 @@ async def addPbToChannel(category, channel, scale):
         message += "```yaml"
         proof = ""
         for pb in category.getPbList():
-            print(pb.asString())
             message += "\n" + positions[category.getPbList().index(pb)] + ": " + str(convertTime(pb.getTime())) + " - " + str(await convertPlayers(pb.getPlayers()))
             proof += "\n<" + str(pb.getProof()) + "\>"
         if (proof != ""):
@@ -718,5 +812,29 @@ def convertToPersonalBestBossName(bossName):
         pbBossesValue.append(boss.value)
 
     return pbBossesName[pbBossesValue.index(difflib.get_close_matches(bossName, pbBossesValue, n = 3, cutoff = 0.01)[0])]
+
+def getDiaryLevel(pb):
+    timeIndex = -1
+    for category in diaryTimes:
+        categoryName = pb.getBossName().value + " " + pb.getScale().value
+        if categoryName == category:
+            index = 0
+            for time in diaryTimes[category]:
+                if int(pb.getTime()) <= int(time):
+                    timeIndex = index
+                index += 1
+
+    if timeIndex == 0:
+        return PersonalBestDiaryLevel.EASY
+    elif timeIndex == 1:
+        return PersonalBestDiaryLevel.MEDIUM
+    elif timeIndex == 2:
+        return PersonalBestDiaryLevel.HARD
+    elif timeIndex == 3:
+        return PersonalBestDiaryLevel.ELITE
+    elif timeIndex == 4:
+        return PersonalBestDiaryLevel.MASTER
+    elif timeIndex == -1:
+        return PersonalBestDiaryLevel.NONE
 
 bot.run(TOKEN)
