@@ -82,6 +82,8 @@ dmCloseTimes = []
 pendingPBs = []
 # List of PersonalBest objects downloaded from the AWS database
 pbDatabase = []
+# List of approved PersonalBest objects that need to be added to the database/google sheets
+approvedPbs = []
 
 # List of PersonalBestCategory objects for storing PersonalBest objects, to manipulate for hiscores
 pbCategories = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC, PersonalBestScale.SOLO),
@@ -115,7 +117,7 @@ bossAbbreviations = {
 diaryTimes = {
     "Chambers of Xeric Solo" : [1800, 1500, 1200, 1020, 945],
     "Chambers of Xeric (Challenge mode) Solo" : [3240, 2640, 2340, 2160, 1980],
-    "Chambers of Xeric (Challenge mode) Trio" : [1980, 1740, 1620, 1500, 1400],
+    "Chambers of Xeric (Challenge mode) Trio" : [1980, 1740, 1620, 1500, 1440],
     "Chambers of Xeric (Challenge mode) 5man" : [1800, 1620, 1500, 1410, 1350],
     "Theatre of Blood Duo" : [1800, 1680, 1560, 1470, 1410],
     "Theatre of Blood Trio" : [1320, 1200, 1110, 1020, 975],
@@ -152,7 +154,13 @@ async def recheckPbs():
 
 @tasks.loop(seconds=60.0)
 async def checkPbSubmissions():
-    if pbSubmittedUpdate[0] == True:
+    if len(approvedPbs) > 0:
+        pb = approvedPbs[0]
+        await put_pb(pb.getBossName().value, pb.getPlayers(), pb.getProof(), pb.getTime())
+        approvedPbs.remove(pb)
+        pbSubmittedUpdate[0] = True
+
+    if pbSubmittedUpdate[0] == True and len(approvedPbs) == 0:
         pbSubmittedUpdate[0] = False
         await update_pbs()
         
@@ -177,9 +185,9 @@ async def checkStoredDateTimes():
                 pb.addMessageToDelete(await pb_submissions.send(member.mention + " Submission timed out. Please start a new submission."))
                 pendingPBs.remove(pb)
                 for message in pb.getMessagesToDelete():
-                    await message.delete()
+                    await deleteMessage(message)
                 for message in pb.getMessagesToKeep():
-                    await message.delete()
+                    await deleteMessage(message)
 
 
 @bot.command(name='closeapps')
@@ -233,9 +241,9 @@ async def event(ctx):
                 pb.addMessageToDelete(await ctx.send(ctx.author.mention + " Submission canceled."))
                 pb.addMessageToDelete(ctx.message)
                 for message in pb.getMessagesToDelete():
-                    await message.delete()
+                    await deleteMessage(message)
                 for message in pb.getMessagesToKeep():
-                    await message.delete()
+                    await deleteMessage(message)
                 pendingPBs.remove(pb)
 
 #profile
@@ -436,7 +444,7 @@ async def on_message(reply):
                     pb.setStatus(PersonalBestStatus.PENDING)
                     pb.setScale(calculateScale(pb.getPlayers()))
                     for message in pb.getMessagesToDelete():
-                        await message.delete()
+                        await deleteMessage(message)
                     
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -528,11 +536,10 @@ async def on_raw_reaction_add(payload):
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     if (payload.emoji.name == '✔️'):
-                        await put_pb(pb.getBossName().value, pb.getPlayers(), pb.getProof(), pb.getTime())
                         await message.clear_reaction('✔️')
                         await message.clear_reaction('❌')
+                        approvedPbs.append(pb)
                         pendingPBs.remove(pb)
-                        pbSubmittedUpdate[0] = True
                     elif (payload.emoji.name == '❌'):
                         user = pb.getSubmitter()
                         await message.delete()
@@ -540,7 +547,7 @@ async def on_raw_reaction_add(payload):
                         await channel.send("Your pb submission has been declined. Please private message " + payload.member.name + " if you wish to find out why.")
                         pendingPBs.remove(pb)
                         for message in pb.getMessagesToKeep():
-                            await message.delete()
+                            await deleteMessage(message)
                 
 #insert pb to database & spreadsheet
 async def put_pb(bossname, players, proof, time):
@@ -551,10 +558,13 @@ async def put_pb(bossname, players, proof, time):
     else:
         playernames = str(players[0])
 
+    # used when updating via sheets
+    #playernames = str(players)
+
     #database
     boto3_client.put_item(TableName='Submitted_PBs', Item={
         'SubID':{
-           'N': str(len(pbDatabase))
+           'N': str(len(pbDatabase) + 1)
         },
         'BossName':{
             'S': bossname
@@ -775,6 +785,12 @@ async def addPbToChannel(category, channel, scale):
         await channel.send(message)
     else:
         await channel.send("*No PBs found for category*")
+
+async def deleteMessage(message):
+    try:
+        await message.delete()
+    except:
+        raise        
 
 
 # Used for turning pb group size into strings to match the sheets used
