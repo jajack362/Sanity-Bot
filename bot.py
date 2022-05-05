@@ -202,6 +202,13 @@ async def event(ctx):
     appsOpen[0] = True
     await ctx.send("Apps opened.")
 
+@bot.command(name='refreshpbs')
+async def event(ctx):
+    if ctx.channel.id == 847952282972323870:
+        await ctx.channel.send("Refresh started...")
+        await update_pbs()
+        await ctx.channel.send("Refresh complete.")
+
 #apply
 @bot.command(name='apply')
 async def event(ctx):
@@ -250,18 +257,15 @@ async def event(ctx):
 @bot.command(name='diary')
 async def event(ctx, *, arg = ""):
     if ctx.channel.id == BOT_COMMANDS_ID:
-        name = ""
         nameFound = False
         points = 0
         emoji = discord.utils.get(bot.emojis, name='bullet')
 
-        if arg != "":
-            name = arg
-        else:
-            name = ctx.author.display_name
+        name = await getName(ctx, arg)
 
         for profile in pbProfiles:
-            if profile.getMember() == name:
+            if profile.getMember().lower() == name.lower():
+                name = profile.getMember()
                 nameFound = True
                 for pb in profile.getPbList():
                     if pb.getDiaryLevel() == PersonalBestDiaryLevel.EASY:
@@ -274,7 +278,7 @@ async def event(ctx, *, arg = ""):
                         points += 10
                     elif pb.getDiaryLevel() == PersonalBestDiaryLevel.MASTER:
                         points += 15
-                embed = discord.Embed(title= name + " 's Diary Profile - Total points: " + str(points) + "/166")
+                embed = discord.Embed(title= name + "'s Diary Profile - Total points: " + str(points) + "/166")
                 embed.set_author(name="Sanity Bot", icon_url="https://i.imgur.com/AnpyKOY.png")
 
                 for bossname in PersonalBestBossName:
@@ -295,7 +299,7 @@ async def event(ctx, *, arg = ""):
                 await ctx.send(embed = embed)
         
         if not nameFound:
-                await ctx.send(name + " was not found in the database. Please re-enter the name exactly as shown in discord.")
+                await ctx.send(name + " was not found in the database.")
     else:
         channel = bot.get_channel(BOT_COMMANDS_ID)
         await ctx.send("Please use me in " + channel.mention)
@@ -305,19 +309,18 @@ async def event(ctx, *, arg = ""):
 async def event(ctx, *, arg = ""):
     completeSheet = pointsSheet.get_all_values()
     nameFound = False
-    name = ""
+   
+    name = await getName(ctx, arg)
 
-    if arg != "":
-        name = arg
-    else:
-        name = ctx.author.display_name
-
+    nameColumnNum = completeSheet[0].index("Name")
+    dateColumnNum = completeSheet[0].index("Join date")
     for entry in completeSheet:
-        if entry[0] == name:
-            if entry[19].count("/") == 2:
-                month = entry[19].split("/")[0]
-                day = entry[19].split("/")[1]
-                year = entry[19].split("/")[2]
+        if entry[nameColumnNum].lower() == name.lower():
+            name = entry[nameColumnNum]
+            if entry[dateColumnNum].count("/") == 2:
+                month = entry[dateColumnNum].split("/")[0]  
+                day = entry[dateColumnNum].split("/")[1]
+                year = entry[dateColumnNum].split("/")[2]
                 joinDate = date(int(year), int(month), int(day))
                 todayDate = date.today()
                 diff = relativedelta.relativedelta(joinDate, todayDate)
@@ -342,7 +345,7 @@ async def event(ctx, *, arg = ""):
             nameFound = True
 
     if not nameFound:
-        await ctx.send(name + " was not found in the spreadsheet. Please re-enter the name exactly as shown in discord.")
+        await ctx.send(name + " was not found in the spreadsheet.")
 
 
 @bot.event
@@ -564,7 +567,7 @@ async def put_pb(bossname, players, proof, time):
     #database
     boto3_client.put_item(TableName='Submitted_PBs', Item={
         'SubID':{
-           'N': str(len(pbDatabase) + 1)
+           'N': str(len(pbDatabase))
         },
         'BossName':{
             'S': bossname
@@ -602,6 +605,10 @@ def get_db():
     table = boto3_resource.Table('Submitted_PBs')
     response = table.scan()
     pbDatabase.clear()
+    for pbCategory in pbCategories:
+        for pb in pbCategory.getPbList():
+            pbCategory.removePb(pb)
+
     awsDownload = (response['Items'])
     for pb in awsDownload:
         if pb['BossName'] != "" and pb['Players'] != "" and pb['Time'] != "" and pb['Proof'] != "":
@@ -790,7 +797,20 @@ async def deleteMessage(message):
     try:
         await message.delete()
     except:
-        raise        
+        pass
+
+async def getName(ctx, arg):
+    if arg == "":
+        return ctx.author.display_name
+    elif '@' in arg:
+        guild = get(bot.guilds, id = SERVER_ID)
+        userId = int(''.join(filter(str.isdigit, arg)))
+        user = guild.get_member(int(userId))
+        return user.display_name
+    else:
+        return arg
+    
+    
 
 
 # Used for turning pb group size into strings to match the sheets used
