@@ -22,5 +22,8 @@ class PersonalBestCategory:
         if pb in self.pbList:
             self.pbList.remove(pb)
     
+    def clearPbList(self):
+        self.pbList.clear()
+    
     def sort(self):
         self.pbList.sort(key=lambda x: x.getTime())

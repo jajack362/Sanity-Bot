@@ -56,10 +56,6 @@ NON_CLANNIE_UID = int(os.getenv("DISCORD_NON_CLANNIE_UID"))
 PB_LEADERBOARD_ID = int(os.getenv("SERVER_PB_LEADERBOARD_ID"))
 PB_SUBMISSIONS_ID = int(os.getenv("SERVER_PB_SUBMISSIONS_ID"))
 PENDING_PBS_ID = int(os.getenv("SERVER_PENDING_PBS_ID"))
-PENDING_APPLICATIONS_ID = int(os.getenv("SERVER_PENDING_APPLICATIONS_ID"))
-TRIAL_APPLICATIONS_CATEGORY_ID = int(os.getenv("SERVER_TRIAL_APPLICATIONS_CATEGORY_ID"))
-TRIAL_MEMBER_ROLE_ID = int(os.getenv("SERVER_TRIAL_MEMBER_ROLE_ID"))
-MEMBERS_CHAT_ID = int(os.getenv("SERVER_MEMBERS_CHAT_ID"))
 SERVER_ID = int(os.getenv("SERVER_SERVER_ID"))
 OFFICIAL_ROLE_ID = int(os.getenv("SERVER_OFFICIAL_ROLE_ID"))
 MEMBERS_ROLES = os.getenv("SERVER_MEMBERS_ROLES").split(",")
@@ -69,19 +65,12 @@ BOT_COMMANDS_ID = int(os.getenv("SERVER_BOT_COMMANDS_ID"))
 boto3_client = boto3.client('dynamodb',aws_access_key_id=os.getenv("AWS_ACCESS"), aws_secret_access_key=os.getenv("AWS_SECRET"), region_name=os.getenv("AWS_REGION"))
 boto3_resource = boto3.resource('dynamodb',aws_access_key_id=os.getenv("AWS_ACCESS"), aws_secret_access_key=os.getenv("AWS_SECRET"), region_name=os.getenv("AWS_REGION"))
 
-# Array of Message objects of applications posted in pending-applications channel
-pendingApps = []
-# Array of Member objects who have a pending application posted, same index as their Message in pendingApps
-pendingUsers = []
-# List of Member objects who have app DMs to keep checking
-openDms = []
-# List of DateTime objects containing the time that open DMs need to be closed, these are checked every 15 seconds for expiry
-dmCloseTimes = []
-
 # List of PersonalBest objects who have an open pb submission
 pendingPBs = []
 # List of PersonalBest objects downloaded from the AWS database
 pbDatabase = []
+# List of approved PersonalBest objects that need to be added to the database/google sheets
+approvedPbs = []
 
 # List of PersonalBestCategory objects for storing PersonalBest objects, to manipulate for hiscores
 pbCategories = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC, PersonalBestScale.SOLO),
@@ -115,7 +104,7 @@ bossAbbreviations = {
 diaryTimes = {
     "Chambers of Xeric Solo" : [1800, 1500, 1200, 1020, 945],
     "Chambers of Xeric (Challenge mode) Solo" : [3240, 2640, 2340, 2160, 1980],
-    "Chambers of Xeric (Challenge mode) Trio" : [1980, 1740, 1620, 1500, 1400],
+    "Chambers of Xeric (Challenge mode) Trio" : [1980, 1740, 1620, 1500, 1440],
     "Chambers of Xeric (Challenge mode) 5man" : [1800, 1620, 1500, 1410, 1350],
     "Theatre of Blood Duo" : [1800, 1680, 1560, 1470, 1410],
     "Theatre of Blood Trio" : [1320, 1200, 1110, 1020, 975],
@@ -152,7 +141,13 @@ async def recheckPbs():
 
 @tasks.loop(seconds=60.0)
 async def checkPbSubmissions():
-    if pbSubmittedUpdate[0] == True:
+    if len(approvedPbs) > 0:
+        pb = approvedPbs[0]
+        await put_pb(pb.getBossName().value, pb.getPlayers(), pb.getProof(), pb.getTime())
+        approvedPbs.remove(pb)
+        pbSubmittedUpdate[0] = True
+
+    if pbSubmittedUpdate[0] == True and len(approvedPbs) == 0:
         pbSubmittedUpdate[0] = False
         await update_pbs()
         
@@ -160,13 +155,6 @@ async def checkPbSubmissions():
 @tasks.loop(seconds=30.0)
 async def checkStoredDateTimes():
     now = datetime.datetime.now()
-    for dateTime in dmCloseTimes:
-        if dateTime < now:
-            member = openDms[dmCloseTimes.index(dateTime)]
-            direct_message = await member.create_dm()
-            await direct_message.send("Application timed out. Please type !apply in #public if you wish to apply again.")
-            openDms.remove(openDms[dmCloseTimes.index(dateTime)])
-            dmCloseTimes.remove(dateTime)
 
     for pb in pendingPBs:
         if pb.getTimeoutTime() < now:
@@ -177,37 +165,31 @@ async def checkStoredDateTimes():
                 pb.addMessageToDelete(await pb_submissions.send(member.mention + " Submission timed out. Please start a new submission."))
                 pendingPBs.remove(pb)
                 for message in pb.getMessagesToDelete():
-                    await message.delete()
+                    await deleteMessage(message)
                 for message in pb.getMessagesToKeep():
-                    await message.delete()
+                    await deleteMessage(message)
 
+@bot.command(name='refreshpbs')
+async def event(ctx):
+    if ctx.channel.id == 847952282972323870:
+        await ctx.channel.send("Refresh started...")
+        for pbCategory in pbCategories:
+            pbCategory.clearPbList()
 
-@bot.command(name='closeapps')
-@commands.has_role(OFFICIAL_ROLE_ID)
-async def event(ctx):
-    appsOpen[0] = False
-    await ctx.send("Apps closed.")
-    
-@bot.command(name='openapps')
-@commands.has_role(OFFICIAL_ROLE_ID)
-async def event(ctx):
-    appsOpen[0] = True
-    await ctx.send("Apps opened.")
+        for cat in top3Pbs:
+            cat.clearPbList()
+            cat.addPb(0)
+            cat.addPb(1)
+            cat.addPb(2)
+
+        await update_pbs()
+        await ctx.channel.send("Refresh complete.")
 
 #apply
 @bot.command(name='apply')
 async def event(ctx):
-    if appsOpen[0]:
-            emptyApp = "Thank you for applying to Sanity! Please copy and paste this application completed into a SINGLE reply here! You have 30 minutes to complete this, otherwise you will have to type !apply again in #public \n\n```Main RSN: \nAlt RSN (if applicable, 1 max): \nPast RSNs [Name as many as you can remember]: \nPreferred Name (This name will be your name on Discord and will not change): \nPlease list who can vouch for you in Sanity: \nHow did you find out about Sanity?: \nTell us about yourself: \nPrevious clans and why you left: \nTimezone: \nPicture of stats [Gyazo or Imgur ONLY] (Must have 78 Herblore, 82+ Construction, 99 ALL combat skills, 90 prayer, and 1750 Total)  [No cropped images]: \nPicture of required items [Gyazo or Imgur ONLY] [SEE REQUIREMENT GRAPHIC]: \nPicture of Boss Log [Gyazo or Imgur ONLY] [Must include 50+ TOB and 100+ COX KC]: \nPicture of Prayer Book [Gyazo or Imgur ONLY] [Must include Rigour and Augury]: \nPicture of your TempleOSRS page [300+ EHB] \nHave you read the rules?: \nWould you like to add anything?: ```"
-            member = ctx.author
-            channel = await member.create_dm()
-            await channel.send(emptyApp)
-            openDms.append(member)
-            now = datetime.datetime.now()
-            now_plus_30 = now + datetime.timedelta(minutes = 30)
-            dmCloseTimes.append(now_plus_30)
-    else:
-        await ctx.channel.send("https://imgur.com/a/mGgieUB")
+    await ctx.channel.send("https://imgur.com/a/mGgieUB")
+
 #pb
 @bot.command(name='pb')
 async def event(ctx):
@@ -233,27 +215,24 @@ async def event(ctx):
                 pb.addMessageToDelete(await ctx.send(ctx.author.mention + " Submission canceled."))
                 pb.addMessageToDelete(ctx.message)
                 for message in pb.getMessagesToDelete():
-                    await message.delete()
+                    await deleteMessage(message)
                 for message in pb.getMessagesToKeep():
-                    await message.delete()
+                    await deleteMessage(message)
                 pendingPBs.remove(pb)
 
 #profile
 @bot.command(name='diary')
 async def event(ctx, *, arg = ""):
     if ctx.channel.id == BOT_COMMANDS_ID:
-        name = ""
         nameFound = False
         points = 0
         emoji = discord.utils.get(bot.emojis, name='bullet')
 
-        if arg != "":
-            name = arg
-        else:
-            name = ctx.author.display_name
+        name = await getName(ctx, arg)
 
         for profile in pbProfiles:
-            if profile.getMember() == name:
+            if profile.getMember().lower() == name.lower():
+                name = profile.getMember()
                 nameFound = True
                 for pb in profile.getPbList():
                     if pb.getDiaryLevel() == PersonalBestDiaryLevel.EASY:
@@ -266,7 +245,7 @@ async def event(ctx, *, arg = ""):
                         points += 10
                     elif pb.getDiaryLevel() == PersonalBestDiaryLevel.MASTER:
                         points += 15
-                embed = discord.Embed(title= name + " 's Diary Profile - Total points: " + str(points) + "/166")
+                embed = discord.Embed(title= name + "'s Diary Profile - Total points: " + str(points) + "/166")
                 embed.set_author(name="Sanity Bot", icon_url="https://i.imgur.com/AnpyKOY.png")
 
                 for bossname in PersonalBestBossName:
@@ -282,12 +261,11 @@ async def event(ctx, *, arg = ""):
                         embed.add_field(name = str(emoji) + " " + bossname.value, value = value, inline = False)
 
                     
-
                 embed.set_footer(text = "Sanity Bot - PB Diary Profile")
                 await ctx.send(embed = embed)
         
         if not nameFound:
-                await ctx.send(name + " was not found in the database. Please re-enter the name exactly as shown in discord.")
+                await ctx.send(name + " was not found in the database.")
     else:
         channel = bot.get_channel(BOT_COMMANDS_ID)
         await ctx.send("Please use me in " + channel.mention)
@@ -297,19 +275,18 @@ async def event(ctx, *, arg = ""):
 async def event(ctx, *, arg = ""):
     completeSheet = pointsSheet.get_all_values()
     nameFound = False
-    name = ""
+   
+    name = await getName(ctx, arg)
 
-    if arg != "":
-        name = arg
-    else:
-        name = ctx.author.display_name
-
+    nameColumnNum = completeSheet[0].index("Name")
+    dateColumnNum = completeSheet[0].index("Join date")
     for entry in completeSheet:
-        if entry[0] == name:
-            if entry[19].count("/") == 2:
-                month = entry[19].split("/")[0]
-                day = entry[19].split("/")[1]
-                year = entry[19].split("/")[2]
+        if entry[nameColumnNum].lower() == name.lower():
+            name = entry[nameColumnNum]
+            if entry[dateColumnNum].count("/") == 2:
+                month = entry[dateColumnNum].split("/")[0]  
+                day = entry[dateColumnNum].split("/")[1]
+                year = entry[dateColumnNum].split("/")[2]
                 joinDate = date(int(year), int(month), int(day))
                 todayDate = date.today()
                 diff = relativedelta.relativedelta(joinDate, todayDate)
@@ -334,7 +311,7 @@ async def event(ctx, *, arg = ""):
             nameFound = True
 
     if not nameFound:
-        await ctx.send(name + " was not found in the spreadsheet. Please re-enter the name exactly as shown in discord.")
+        await ctx.send(name + " was not found in the spreadsheet.")
 
 
 @bot.event
@@ -347,19 +324,6 @@ async def on_command_error(ctx, error):
 @bot.event
 async def on_message(reply):
     await bot.process_commands(reply)
-    # If DM, assume its an application
-    if isinstance(reply.channel, discord.channel.DMChannel):
-        for member in openDms:
-            if (member.id == reply.author.id):
-                pending_applications = bot.get_channel(PENDING_APPLICATIONS_ID)
-                await reply.channel.send("Your application is now under review, you will receieve another message once you have been accepted or declined! Please be patient as this could take up to a few days.")
-                message = await pending_applications.send("New application from: " + member.mention + "\n```" + reply.content + "```")
-                await message.add_reaction('✔️')
-                await message.add_reaction('❌')
-                pendingApps.append(message)
-                pendingUsers.append(member)
-                dmCloseTimes.remove(dmCloseTimes[openDms.index(member)])
-                openDms.remove(member)
     # If in pending PBs, assume its for a PB
     for pb in pendingPBs:
         if reply.author == pb.getSubmitter() and pb.getStatus() == PersonalBestStatus.CREATING:
@@ -403,6 +367,8 @@ async def on_message(reply):
                             pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please type the name of the content you are submitting for."))
                         elif reply.content.lower() == "yes":
                             pb.addMessageToDelete(await reply.channel.send(reply.author.mention + "  Please enter your time in mm:ss format."))
+                            if isinstance(pb.getBossGuess(), str):
+                                pb.setBossGuess(convertToPersonalBestBossName(pb.getBossGuess()))
                             pb.setBossName(pb.getBossGuess())
                         else:
                             pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " yes or no only please."))
@@ -424,7 +390,7 @@ async def on_message(reply):
                     guild = get(bot.guilds, id = SERVER_ID)
                     pending_pbs = get(guild.channels, id = PENDING_PBS_ID)
                     message = await pending_pbs.send("New pb submission for: " +  ', '.join(guild.get_member(name).mention for name in pb.getPlayers()) +
-                    "\nBoss: " + pb.getBossName() +
+                    "\nBoss: " + pb.getBossName().value +
                     "\nTime: " + pb.getTime() +
                     "\nProof: " + pb.getProof())
 
@@ -434,88 +400,10 @@ async def on_message(reply):
                     pb.setStatus(PersonalBestStatus.PENDING)
                     pb.setScale(calculateScale(pb.getPlayers()))
                     for message in pb.getMessagesToDelete():
-                        await message.delete()
+                        await deleteMessage(message)
                     
 @bot.event
-async def on_raw_reaction_add(payload):
-    for message in pendingApps:
-        if (message.id == payload.message_id):
-            if (payload.member.id != BOT_UID):
-                roleIds = []
-                reset = False
-                for role in payload.member.roles:
-                    roleIds.append(role.id)
-                if(OFFICIAL_ROLE_ID in roleIds):
-                    if (payload.emoji.name == '✔️'):
-                        guild = get(bot.guilds, id = SERVER_ID)
-                        members_chat = get(guild.channels, id = MEMBERS_CHAT_ID)
-                        trial_applications = get(guild.categories , id = TRIAL_APPLICATIONS_CATEGORY_ID)
-                        trial_member_role = get(guild.roles, id = TRIAL_MEMBER_ROLE_ID)
-                        # Finder Member object
-                        user = pendingUsers[pendingApps.index(message)]
-                        channel = await user.create_dm()
-                        await channel.send("Your application has been accepted!")
-                        await user.add_roles(trial_member_role)
-                        #create app chan
-                        trial_channel = await guild.create_text_channel(user.name + "-application", category=trial_applications)
-                        await trial_channel.send(message.content)
-                        # collect info for sheet
-                        # main rsn
-                        splt1 = message.content.split('Main RSN:')[1]
-                        split2 = splt1.split('\n')[0]
-                        main_rsn = split2.strip(" ")
-                        # alt rsn
-                        splt1 = message.content.split('Alt RSN (if applicable, 1 max):')[1]
-                        split2 = splt1.split('\n')[0]
-                        alt_rsn = split2.strip(" ")
-                        # preferred name
-                        splt1 = message.content.split('Preferred Name (This name will be your name on Discord and will not change):')[1]
-                        split2 = splt1.split('\n')[0]
-                        preferred_name = split2.strip(" ")
-                        # discord hash
-                        discord_hash = user.name + "#" + user.discriminator
-                        # join date
-                        today = date.today()
-                        dateToday = today.strftime("%m/%d/%Y")
-                        
-                        #add to sheet
-                        row_number = 0
-                        for name in pointsSheet.col_values(1):
-                            row_number = row_number + 1
-                            if (name == ""):
-                                pointsSheet.update_cell(row_number, 1, preferred_name)
-                                pointsSheet.update_cell(row_number, 8, dateToday)
-                                break
-
-
-                        column_data = infoSheet.col_values(1)
-                        row_location = len(column_data)
-
-                        row = [preferred_name, main_rsn, alt_rsn, discord_hash ,dateToday]
-                        infoSheet.insert_row(row, row_location + 1)
-
-                        # set their discord nick to pref name - note this doesnt work for server owners for some reason.
-                        await user.edit(nick=preferred_name)
-
-                        # send members chat welcome message
-                        await members_chat.send("Please welcome " + user.mention + " to Sanity!")
-                        reset = True
-                        
-                    elif (payload.emoji.name == '❌'):
-                        user = pendingUsers[pendingApps.index(message)]
-                        channel = await user.create_dm()
-                        await channel.send("Your application has been declined. Please private message " + payload.member.name + " if you wish to find out why.")
-                        reset = True
-                    
-                    try:
-                        if reset:
-                            await message.clear_reaction('❌')
-                            await message.clear_reaction('✔️')
-                            pendingUsers.remove(pendingUsers[pendingApps.index(message)])
-                            pendingApps.remove(message)
-                    except:
-                        pass
-                    
+async def on_raw_reaction_add(payload):              
     for pb in pendingPBs:
         if payload.message_id == pb.getMessageID() and pb.getStatus() == PersonalBestStatus.PENDING:
             if payload.member.id != BOT_UID:
@@ -526,11 +414,10 @@ async def on_raw_reaction_add(payload):
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     if (payload.emoji.name == '✔️'):
-                        await put_pb(pb.getBossName(), pb.getPlayers(), pb.getProof(), pb.getTime())
                         await message.clear_reaction('✔️')
                         await message.clear_reaction('❌')
+                        approvedPbs.append(pb)
                         pendingPBs.remove(pb)
-                        pbSubmittedUpdate[0] = True
                     elif (payload.emoji.name == '❌'):
                         user = pb.getSubmitter()
                         await message.delete()
@@ -538,7 +425,7 @@ async def on_raw_reaction_add(payload):
                         await channel.send("Your pb submission has been declined. Please private message " + payload.member.name + " if you wish to find out why.")
                         pendingPBs.remove(pb)
                         for message in pb.getMessagesToKeep():
-                            await message.delete()
+                            await deleteMessage(message)
                 
 #insert pb to database & spreadsheet
 async def put_pb(bossname, players, proof, time):
@@ -548,6 +435,9 @@ async def put_pb(bossname, players, proof, time):
         playernames = ','.join(str(player) for player in players)
     else:
         playernames = str(players[0])
+
+    # used when updating via sheets
+    #playernames = str(players)
 
     #database
     boto3_client.put_item(TableName='Submitted_PBs', Item={
@@ -590,6 +480,7 @@ def get_db():
     table = boto3_resource.Table('Submitted_PBs')
     response = table.scan()
     pbDatabase.clear()
+
     awsDownload = (response['Items'])
     for pb in awsDownload:
         if pb['BossName'] != "" and pb['Players'] != "" and pb['Time'] != "" and pb['Proof'] != "":
@@ -614,7 +505,7 @@ async def update_pbs():
     guild = get(bot.guilds, id = SERVER_ID)
 
     # sort into individual PersonalBestCategory objects for pb hiscores, this will not add ex clan member pbs
-    for pb in pbDatabase:
+    for pb in pbDatabase:        
         for pbCategory in pbCategories:
             if pb.getBossName() == pbCategory.getBossName():
                 if pb.getScale() == pbCategory.getScale():
@@ -651,7 +542,6 @@ async def update_pbs():
                         except:
                             #Non sanity member as not in discord (uid lookup failed)
                             allMembersFound = False
-                            break
 
                     if allMembersFound:
                         existingPbFound = False
@@ -773,6 +663,25 @@ async def addPbToChannel(category, channel, scale):
         await channel.send(message)
     else:
         await channel.send("*No PBs found for category*")
+
+async def deleteMessage(message):
+    try:
+        await message.delete()
+    except:
+        pass
+
+async def getName(ctx, arg):
+    if arg == "":
+        return ctx.author.display_name
+    elif '@' in arg:
+        guild = get(bot.guilds, id = SERVER_ID)
+        userId = int(''.join(filter(str.isdigit, arg)))
+        user = guild.get_member(int(userId))
+        return user.display_name
+    else:
+        return arg
+    
+    
 
 
 # Used for turning pb group size into strings to match the sheets used
