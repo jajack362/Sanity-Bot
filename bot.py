@@ -56,10 +56,6 @@ NON_CLANNIE_UID = int(os.getenv("DISCORD_NON_CLANNIE_UID"))
 PB_LEADERBOARD_ID = int(os.getenv("SERVER_PB_LEADERBOARD_ID"))
 PB_SUBMISSIONS_ID = int(os.getenv("SERVER_PB_SUBMISSIONS_ID"))
 PENDING_PBS_ID = int(os.getenv("SERVER_PENDING_PBS_ID"))
-PENDING_APPLICATIONS_ID = int(os.getenv("SERVER_PENDING_APPLICATIONS_ID"))
-TRIAL_APPLICATIONS_CATEGORY_ID = int(os.getenv("SERVER_TRIAL_APPLICATIONS_CATEGORY_ID"))
-TRIAL_MEMBER_ROLE_ID = int(os.getenv("SERVER_TRIAL_MEMBER_ROLE_ID"))
-MEMBERS_CHAT_ID = int(os.getenv("SERVER_MEMBERS_CHAT_ID"))
 SERVER_ID = int(os.getenv("SERVER_SERVER_ID"))
 OFFICIAL_ROLE_ID = int(os.getenv("SERVER_OFFICIAL_ROLE_ID"))
 MEMBERS_ROLES = os.getenv("SERVER_MEMBERS_ROLES").split(",")
@@ -68,15 +64,6 @@ BOT_COMMANDS_ID = int(os.getenv("SERVER_BOT_COMMANDS_ID"))
 # Setup Database Connection
 boto3_client = boto3.client('dynamodb',aws_access_key_id=os.getenv("AWS_ACCESS"), aws_secret_access_key=os.getenv("AWS_SECRET"), region_name=os.getenv("AWS_REGION"))
 boto3_resource = boto3.resource('dynamodb',aws_access_key_id=os.getenv("AWS_ACCESS"), aws_secret_access_key=os.getenv("AWS_SECRET"), region_name=os.getenv("AWS_REGION"))
-
-# Array of Message objects of applications posted in pending-applications channel
-pendingApps = []
-# Array of Member objects who have a pending application posted, same index as their Message in pendingApps
-pendingUsers = []
-# List of Member objects who have app DMs to keep checking
-openDms = []
-# List of DateTime objects containing the time that open DMs need to be closed, these are checked every 15 seconds for expiry
-dmCloseTimes = []
 
 # List of PersonalBest objects who have an open pb submission
 pendingPBs = []
@@ -168,13 +155,6 @@ async def checkPbSubmissions():
 @tasks.loop(seconds=30.0)
 async def checkStoredDateTimes():
     now = datetime.datetime.now()
-    for dateTime in dmCloseTimes:
-        if dateTime < now:
-            member = openDms[dmCloseTimes.index(dateTime)]
-            direct_message = await member.create_dm()
-            await direct_message.send("Application timed out. Please type !apply in #public if you wish to apply again.")
-            openDms.remove(openDms[dmCloseTimes.index(dateTime)])
-            dmCloseTimes.remove(dateTime)
 
     for pb in pendingPBs:
         if pb.getTimeoutTime() < now:
@@ -189,40 +169,27 @@ async def checkStoredDateTimes():
                 for message in pb.getMessagesToKeep():
                     await deleteMessage(message)
 
-
-@bot.command(name='closeapps')
-@commands.has_role(OFFICIAL_ROLE_ID)
-async def event(ctx):
-    appsOpen[0] = False
-    await ctx.send("Apps closed.")
-    
-@bot.command(name='openapps')
-@commands.has_role(OFFICIAL_ROLE_ID)
-async def event(ctx):
-    appsOpen[0] = True
-    await ctx.send("Apps opened.")
-
 @bot.command(name='refreshpbs')
 async def event(ctx):
     if ctx.channel.id == 847952282972323870:
         await ctx.channel.send("Refresh started...")
+        for pbCategory in pbCategories:
+            pbCategory.clearPbList()
+
+        for cat in top3Pbs:
+            cat.clearPbList()
+            cat.addPb(0)
+            cat.addPb(1)
+            cat.addPb(2)
+
         await update_pbs()
         await ctx.channel.send("Refresh complete.")
 
 #apply
 @bot.command(name='apply')
 async def event(ctx):
-    if appsOpen[0]:
-            emptyApp = "Thank you for applying to Sanity! Please copy and paste this application completed into a SINGLE reply here! You have 30 minutes to complete this, otherwise you will have to type !apply again in #public \n\n```Main RSN: \nAlt RSN (if applicable, 1 max): \nPast RSNs [Name as many as you can remember]: \nPreferred Name (This name will be your name on Discord and will not change): \nPlease list who can vouch for you in Sanity: \nHow did you find out about Sanity?: \nTell us about yourself: \nPrevious clans and why you left: \nTimezone: \nPicture of stats [Gyazo or Imgur ONLY] (Must have 78 Herblore, 82+ Construction, 99 ALL combat skills, 90 prayer, and 1750 Total)  [No cropped images]: \nPicture of required items [Gyazo or Imgur ONLY] [SEE REQUIREMENT GRAPHIC]: \nPicture of Boss Log [Gyazo or Imgur ONLY] [Must include 50+ TOB and 100+ COX KC]: \nPicture of Prayer Book [Gyazo or Imgur ONLY] [Must include Rigour and Augury]: \nPicture of your TempleOSRS page [300+ EHB] \nHave you read the rules?: \nWould you like to add anything?: ```"
-            member = ctx.author
-            channel = await member.create_dm()
-            await channel.send(emptyApp)
-            openDms.append(member)
-            now = datetime.datetime.now()
-            now_plus_30 = now + datetime.timedelta(minutes = 30)
-            dmCloseTimes.append(now_plus_30)
-    else:
-        await ctx.channel.send("https://imgur.com/a/mGgieUB")
+    await ctx.channel.send("https://imgur.com/a/mGgieUB")
+
 #pb
 @bot.command(name='pb')
 async def event(ctx):
@@ -294,7 +261,6 @@ async def event(ctx, *, arg = ""):
                         embed.add_field(name = str(emoji) + " " + bossname.value, value = value, inline = False)
 
                     
-
                 embed.set_footer(text = "Sanity Bot - PB Diary Profile")
                 await ctx.send(embed = embed)
         
@@ -358,19 +324,6 @@ async def on_command_error(ctx, error):
 @bot.event
 async def on_message(reply):
     await bot.process_commands(reply)
-    # If DM, assume its an application
-    if isinstance(reply.channel, discord.channel.DMChannel):
-        for member in openDms:
-            if (member.id == reply.author.id):
-                pending_applications = bot.get_channel(PENDING_APPLICATIONS_ID)
-                await reply.channel.send("Your application is now under review, you will receieve another message once you have been accepted or declined! Please be patient as this could take up to a few days.")
-                message = await pending_applications.send("New application from: " + member.mention + "\n```" + reply.content + "```")
-                await message.add_reaction('✔️')
-                await message.add_reaction('❌')
-                pendingApps.append(message)
-                pendingUsers.append(member)
-                dmCloseTimes.remove(dmCloseTimes[openDms.index(member)])
-                openDms.remove(member)
     # If in pending PBs, assume its for a PB
     for pb in pendingPBs:
         if reply.author == pb.getSubmitter() and pb.getStatus() == PersonalBestStatus.CREATING:
@@ -450,85 +403,7 @@ async def on_message(reply):
                         await deleteMessage(message)
                     
 @bot.event
-async def on_raw_reaction_add(payload):
-    for message in pendingApps:
-        if (message.id == payload.message_id):
-            if (payload.member.id != BOT_UID):
-                roleIds = []
-                reset = False
-                for role in payload.member.roles:
-                    roleIds.append(role.id)
-                if(OFFICIAL_ROLE_ID in roleIds):
-                    if (payload.emoji.name == '✔️'):
-                        guild = get(bot.guilds, id = SERVER_ID)
-                        members_chat = get(guild.channels, id = MEMBERS_CHAT_ID)
-                        trial_applications = get(guild.categories , id = TRIAL_APPLICATIONS_CATEGORY_ID)
-                        trial_member_role = get(guild.roles, id = TRIAL_MEMBER_ROLE_ID)
-                        # Finder Member object
-                        user = pendingUsers[pendingApps.index(message)]
-                        channel = await user.create_dm()
-                        await channel.send("Your application has been accepted!")
-                        await user.add_roles(trial_member_role)
-                        #create app chan
-                        trial_channel = await guild.create_text_channel(user.name + "-application", category=trial_applications)
-                        await trial_channel.send(message.content)
-                        # collect info for sheet
-                        # main rsn
-                        splt1 = message.content.split('Main RSN:')[1]
-                        split2 = splt1.split('\n')[0]
-                        main_rsn = split2.strip(" ")
-                        # alt rsn
-                        splt1 = message.content.split('Alt RSN (if applicable, 1 max):')[1]
-                        split2 = splt1.split('\n')[0]
-                        alt_rsn = split2.strip(" ")
-                        # preferred name
-                        splt1 = message.content.split('Preferred Name (This name will be your name on Discord and will not change):')[1]
-                        split2 = splt1.split('\n')[0]
-                        preferred_name = split2.strip(" ")
-                        # discord hash
-                        discord_hash = user.name + "#" + user.discriminator
-                        # join date
-                        today = date.today()
-                        dateToday = today.strftime("%m/%d/%Y")
-                        
-                        #add to sheet
-                        row_number = 0
-                        for name in pointsSheet.col_values(1):
-                            row_number = row_number + 1
-                            if (name == ""):
-                                pointsSheet.update_cell(row_number, 1, preferred_name)
-                                pointsSheet.update_cell(row_number, 8, dateToday)
-                                break
-
-
-                        column_data = infoSheet.col_values(1)
-                        row_location = len(column_data)
-
-                        row = [preferred_name, main_rsn, alt_rsn, discord_hash ,dateToday]
-                        infoSheet.insert_row(row, row_location + 1)
-
-                        # set their discord nick to pref name - note this doesnt work for server owners for some reason.
-                        await user.edit(nick=preferred_name)
-
-                        # send members chat welcome message
-                        await members_chat.send("Please welcome " + user.mention + " to Sanity!")
-                        reset = True
-                        
-                    elif (payload.emoji.name == '❌'):
-                        user = pendingUsers[pendingApps.index(message)]
-                        channel = await user.create_dm()
-                        await channel.send("Your application has been declined. Please private message " + payload.member.name + " if you wish to find out why.")
-                        reset = True
-                    
-                    try:
-                        if reset:
-                            await message.clear_reaction('❌')
-                            await message.clear_reaction('✔️')
-                            pendingUsers.remove(pendingUsers[pendingApps.index(message)])
-                            pendingApps.remove(message)
-                    except:
-                        pass
-                    
+async def on_raw_reaction_add(payload):              
     for pb in pendingPBs:
         if payload.message_id == pb.getMessageID() and pb.getStatus() == PersonalBestStatus.PENDING:
             if payload.member.id != BOT_UID:
@@ -605,9 +480,6 @@ def get_db():
     table = boto3_resource.Table('Submitted_PBs')
     response = table.scan()
     pbDatabase.clear()
-    for pbCategory in pbCategories:
-        for pb in pbCategory.getPbList():
-            pbCategory.removePb(pb)
 
     awsDownload = (response['Items'])
     for pb in awsDownload:
@@ -633,7 +505,7 @@ async def update_pbs():
     guild = get(bot.guilds, id = SERVER_ID)
 
     # sort into individual PersonalBestCategory objects for pb hiscores, this will not add ex clan member pbs
-    for pb in pbDatabase:
+    for pb in pbDatabase:        
         for pbCategory in pbCategories:
             if pb.getBossName() == pbCategory.getBossName():
                 if pb.getScale() == pbCategory.getScale():
@@ -670,7 +542,6 @@ async def update_pbs():
                         except:
                             #Non sanity member as not in discord (uid lookup failed)
                             allMembersFound = False
-                            break
 
                     if allMembersFound:
                         existingPbFound = False
