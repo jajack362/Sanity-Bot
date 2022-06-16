@@ -17,6 +17,7 @@ class PersonalBest:
         self.messagesToDelete = []
         self.messagesToKeep = []
         self.diaryLevel = PersonalBestDiaryLevel.NONE
+        self.diaryPoints = 0
 
     def getSubmitter(self):
         return self.submitter
@@ -94,6 +95,12 @@ class PersonalBest:
     
     def getDiaryLevel(self):
         return self.diaryLevel
+
+    def setDiaryPoints(self, diaryPoints):
+        self.diaryPoints = diaryPoints
+
+    def getDiaryPoints(self):
+        return self.diaryPoints
 
     def asString(self):
         return "Boss Name: " + str(self.bossName.value) + ", Players: " + str(self.players) + ", Time: " + str(self.time) + ", Proof: " + str(self.proof)
