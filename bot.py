@@ -220,6 +220,39 @@ async def event(ctx):
                     await deleteMessage(message)
                 pendingPBs.remove(pb)
 
+#leaderboard
+@bot.command(name='leaderboard')
+async def event(ctx, *, arg = ""):
+    if ctx.channel.id == BOT_COMMANDS_ID:
+        maxPbs = 15
+        if arg.isnumeric():
+            if int(arg) > 40:
+                maxPbs = 40
+            else:
+                maxPbs = int(arg)
+
+
+        pbProfiles.sort(key=lambda x: x.getPoints())
+        pbProfiles.reverse()
+
+        embed = discord.Embed(title= "Sanity Diary Points Leaderboard")
+        embed.set_author(name="Sanity Bot", icon_url="https://i.imgur.com/AnpyKOY.png")
+
+        value = ""
+        
+        for i in range(0, maxPbs):
+            value += str(i + 1) + ") " + str(pbProfiles[i].getMember()) + " - " + str(pbProfiles[i].getPoints()) + "/166\n"
+        
+        
+        embed.add_field(name = "Leaderboard", value = value, inline = False)
+            
+        embed.set_footer(text = "Sanity Bot - PB Diary Point Leaderboard")
+        await ctx.send(embed = embed)
+
+    else:
+        channel = bot.get_channel(BOT_COMMANDS_ID)
+        await ctx.send("Please use me in " + channel.mention)
+
 #profile
 @bot.command(name='diary')
 async def event(ctx, *, arg = ""):
@@ -234,17 +267,7 @@ async def event(ctx, *, arg = ""):
             if profile.getMember().lower() == name.lower():
                 name = profile.getMember()
                 nameFound = True
-                for pb in profile.getPbList():
-                    if pb.getDiaryLevel() == PersonalBestDiaryLevel.EASY:
-                        points += 1
-                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.MEDIUM:
-                        points += 3
-                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.HARD:
-                        points += 6
-                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.ELITE:
-                        points += 10
-                    elif pb.getDiaryLevel() == PersonalBestDiaryLevel.MASTER:
-                        points += 15
+                points = profile.getPoints()
                 embed = discord.Embed(title= name + "'s Diary Profile - Total points: " + str(points) + "/166")
                 embed.set_author(name="Sanity Bot", icon_url="https://i.imgur.com/AnpyKOY.png")
 
@@ -498,6 +521,7 @@ def get_db():
             #Convert to seconds for sorting later on
             pb.setTime(datetime.timedelta(minutes=int(m),seconds=int(s)).total_seconds())
         pb.setDiaryLevel(getDiaryLevel(pb))
+        pb.setDiaryPoints(calcDiaryPoints(pb.getDiaryLevel()))
 
 # update pb leaderboards channel
 async def update_pbs():
@@ -536,9 +560,10 @@ async def update_pbs():
                                         profile.addPb(pb)
                                         pbAdded = True
                             if not pbAdded:
-                                profile = PersonalBestProfile(member.display_name)
-                                profile.addPb(pb)
-                                pbProfiles.append(profile)         
+                                if member.id != int(NON_CLANNIE_UID) and individualMemberFound:
+                                    profile = PersonalBestProfile(member.display_name)
+                                    profile.addPb(pb)
+                                    pbProfiles.append(profile)         
                         except:
                             #Non sanity member as not in discord (uid lookup failed)
                             allMembersFound = False
@@ -721,6 +746,20 @@ def convertToPersonalBestBossName(bossName):
         pbBossesValue.append(boss.value)
 
     return pbBossesName[pbBossesValue.index(difflib.get_close_matches(bossName, pbBossesValue, n = 3, cutoff = 0.01)[0])]
+
+def calcDiaryPoints(diaryLevel):
+    if diaryLevel == PersonalBestDiaryLevel.NONE:
+        return 0
+    elif diaryLevel == PersonalBestDiaryLevel.EASY:
+        return 1
+    elif diaryLevel == PersonalBestDiaryLevel.MEDIUM:
+        return 3
+    elif diaryLevel == PersonalBestDiaryLevel.HARD:
+        return 6
+    elif diaryLevel == PersonalBestDiaryLevel.ELITE:
+        return 10
+    elif diaryLevel == PersonalBestDiaryLevel.MASTER:
+        return 15
 
 def getDiaryLevel(pb):
     timeIndex = -1
