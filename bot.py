@@ -353,7 +353,7 @@ async def on_message(reply):
             if (reply.channel.id == PB_SUBMISSIONS_ID):
                 if pb.getProof() == "proof":
                     # this will never break i promise..
-                    if "imgur." in reply.content:
+                    if "imgur." in reply.content and " " not in reply.content:
                         pb.setProof(reply.content)
                         pb.addMessageToKeep(reply)
                         pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself."))
