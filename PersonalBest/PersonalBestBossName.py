@@ -8,3 +8,5 @@ class PersonalBestBossName(Enum):
     FIGHT_CAVES = "Fight Caves"
     SIX_JADS = "6 Jads"
     CORRUPTED_GAUNTLET = "Corrupted Gauntlet"
+    TOMBS_OF_AMASCUT = "Tombs of Amascut"
+    FANG_KIT = "Fang Kit"

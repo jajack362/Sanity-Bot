@@ -73,21 +73,25 @@ pbDatabase = []
 approvedPbs = []
 
 # List of PersonalBestCategory objects for storing PersonalBest objects, to manipulate for hiscores
-pbCategories = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC, PersonalBestScale.SOLO),
-                PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.SOLO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.FIVE_MAN), 
+pbCategories = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.SOLO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.FIVE_MAN), 
                 PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.DUO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FOUR_MAN), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FIVE_MAN), 
                 PersonalBestCategory(PersonalBestBossName.INFERNO, PersonalBestScale.SOLO), 
                 PersonalBestCategory(PersonalBestBossName.FIGHT_CAVES, PersonalBestScale.SOLO), 
                 PersonalBestCategory(PersonalBestBossName.SIX_JADS, PersonalBestScale.SOLO), 
-                PersonalBestCategory(PersonalBestBossName.CORRUPTED_GAUNTLET, PersonalBestScale.SOLO)]
+                PersonalBestCategory(PersonalBestBossName.CORRUPTED_GAUNTLET, PersonalBestScale.SOLO),
+                PersonalBestCategory(PersonalBestBossName.TOMBS_OF_AMASCUT, PersonalBestScale.SOLO),
+                PersonalBestCategory(PersonalBestBossName.TOMBS_OF_AMASCUT, PersonalBestScale.FOUR_MAN),
+                PersonalBestCategory(PersonalBestBossName.FANG_KIT, PersonalBestScale.SOLO)]
 
-top3Pbs = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC, PersonalBestScale.SOLO),
-                PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.SOLO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.FIVE_MAN), 
-                PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.DUO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FOUR_MAN), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FIVE_MAN), 
-                PersonalBestCategory(PersonalBestBossName.INFERNO, PersonalBestScale.SOLO), 
-                PersonalBestCategory(PersonalBestBossName.FIGHT_CAVES, PersonalBestScale.SOLO), 
-                PersonalBestCategory(PersonalBestBossName.SIX_JADS, PersonalBestScale.SOLO), 
-                PersonalBestCategory(PersonalBestBossName.CORRUPTED_GAUNTLET, PersonalBestScale.SOLO)]
+top3Pbs = [PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.SOLO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.CHAMBERS_OF_XERIC_CHALLENGE_MODE, PersonalBestScale.FIVE_MAN), 
+            PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.DUO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.TRIO), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FOUR_MAN), PersonalBestCategory(PersonalBestBossName.THEATRE_OF_BLOOD, PersonalBestScale.FIVE_MAN), 
+            PersonalBestCategory(PersonalBestBossName.INFERNO, PersonalBestScale.SOLO), 
+            PersonalBestCategory(PersonalBestBossName.FIGHT_CAVES, PersonalBestScale.SOLO), 
+            PersonalBestCategory(PersonalBestBossName.SIX_JADS, PersonalBestScale.SOLO), 
+            PersonalBestCategory(PersonalBestBossName.CORRUPTED_GAUNTLET, PersonalBestScale.SOLO),
+            PersonalBestCategory(PersonalBestBossName.TOMBS_OF_AMASCUT, PersonalBestScale.SOLO),
+            PersonalBestCategory(PersonalBestBossName.TOMBS_OF_AMASCUT, PersonalBestScale.FOUR_MAN),
+                PersonalBestCategory(PersonalBestBossName.FANG_KIT, PersonalBestScale.SOLO)]
 
 # List of PersonalBestProfile objects for building the personal diary log
 pbProfiles = []
@@ -97,23 +101,26 @@ bossAbbreviations = {
   "tob": "Theatre of Blood",
   "cox": "Chambers of Xeric",
   "cm": "Chambers of Xeric (Challenge mode)",
-  "cg": "Corrupted Gauntlet"
+  "cg": "Corrupted Gauntlet",
+  "toa": "Tombs of Amascut"
 }
 
 # These are stored in seconds
 diaryTimes = {
-    "Chambers of Xeric Solo" : [1800, 1500, 1200, 1020, 945],
-    "Chambers of Xeric (Challenge mode) Solo" : [3240, 2640, 2340, 2160, 1980],
-    "Chambers of Xeric (Challenge mode) Trio" : [1980, 1740, 1620, 1500, 1440],
-    "Chambers of Xeric (Challenge mode) 5man" : [1800, 1620, 1500, 1410, 1350],
-    "Theatre of Blood Duo" : [1800, 1680, 1560, 1470, 1410],
-    "Theatre of Blood Trio" : [1320, 1200, 1110, 1020, 975],
-    "Theatre of Blood 4man" : [1200, 1080, 960, 930, 855],
-    "Theatre of Blood 5man" : [1080, 990, 900, 840, 800],
-    "The Inferno Solo" : [6000, 5100, 4200, 3600, 3300],
-    "Fight Caves Solo" : [2100, 1920, 1740, 1620, 1530],
+    "Chambers of Xeric (Challenge mode) Solo" : [3000, 2400, 2160, 1980, 1800],
+    "Chambers of Xeric (Challenge mode) Trio" : [1680, 1590, 1500, 1410, 1320],
+    "Chambers of Xeric (Challenge mode) 5man" : [1620, 1500, 1410, 1320, 1230],
+    "Theatre of Blood Duo" : [1800, 1620, 1470, 1395, 1350],
+    "Theatre of Blood Trio" : [1260, 1170, 1080, 1005, 960],
+    "Theatre of Blood 4man" : [1170, 1050, 945, 885, 840],
+    "Theatre of Blood 5man" : [1050, 960, 885, 825, 780],
+    "The Inferno Solo" : [5400, 4200, 3900, 3300, 3000],
+    "Fight Caves Solo" : [1980, 1800, 1650, 1530, 1455],
     "6 Jads Solo" : [3600],
     "Corrupted Gauntlet Solo" : [720, 600, 510, 420, 345],
+    "Tombs of Amascut Solo" : [1800, 1620, 1440, 1335, 1260],
+    "Tombs of Amascut 4man" : [1680, 1500, 1395, 1335, 1290],
+    "Fang Kit Solo" : [99999999999999]
 }
 
 appsOpen = [False]
@@ -241,7 +248,7 @@ async def event(ctx, *, arg = ""):
         value = ""
         
         for i in range(0, maxPbs):
-            value += str(i + 1) + ") " + str(pbProfiles[i].getMember()) + " - " + str(pbProfiles[i].getPoints()) + "/166\n"
+            value += str(i + 1) + ") " + str(pbProfiles[i].getMember()) + " - " + str(pbProfiles[i].getPoints()) + "/182\n"
         
         
         embed.add_field(name = "Leaderboard", value = value, inline = False)
@@ -268,7 +275,7 @@ async def event(ctx, *, arg = ""):
                 name = profile.getMember()
                 nameFound = True
                 points = profile.getPoints()
-                embed = discord.Embed(title= name + "'s Diary Profile - Total points: " + str(points) + "/166")
+                embed = discord.Embed(title= name + "'s Diary Profile - Total points: " + str(points) + "/182")
                 embed.set_author(name="Sanity Bot", icon_url="https://i.imgur.com/AnpyKOY.png")
 
                 for bossname in PersonalBestBossName:
@@ -353,7 +360,7 @@ async def on_message(reply):
             if (reply.channel.id == PB_SUBMISSIONS_ID):
                 if pb.getProof() == "proof":
                     # this will never break i promise..
-                    if "imgur." in reply.content:
+                    if "imgur." in reply.content and " " not in reply.content:
                         pb.setProof(reply.content)
                         pb.addMessageToKeep(reply)
                         pb.addMessageToDelete(await reply.channel.send(reply.author.mention + " Please @mention all members involved, including yourself."))
@@ -452,6 +459,8 @@ async def on_raw_reaction_add(payload):
                 
 #insert pb to database & spreadsheet
 async def put_pb(bossname, players, proof, time):
+    channel_id = 847952282972323870
+    channel = bot.get_channel(channel_id)
     playernames = ""
     if type(players) == list:
         players.sort
@@ -463,37 +472,44 @@ async def put_pb(bossname, players, proof, time):
     #playernames = str(players)
 
     #database
-    boto3_client.put_item(TableName='Submitted_PBs', Item={
-        'SubID':{
-           'N': str(len(pbDatabase))
-        },
-        'BossName':{
-            'S': bossname
-        },
-        'Players':{
-            'S': playernames
+    try:
+        boto3_client.put_item(TableName='Submitted_PBs', Item={
+            'SubID':{
+            'N': str(len(pbDatabase))
             },
-        'Proof':{
-            'S': proof
+            'BossName':{
+                'S': bossname
             },
-        'Time':{
-            'S': time
+            'Players':{
+                'S': playernames
+                },
+            'Proof':{
+                'S': proof
+                },
+            'Time':{
+                'S': time
+                    }
                 }
-            }
-        )
+            )
+    except: 
+        await channel.send("Error during database insertion for PB: " + str(proof))
+    
 
     #spreadsheet
     column_data = pbLogSheet.col_values(1)
     row_location = len(column_data)
 
-    for i in range(len(players)):
-        row_to_update = i + row_location + 1
-        pbLogSheet.update_cell(row_to_update, 1, str(await convertPlayers(players[i])))
-        pbLogSheet.update_cell(row_to_update, 2, bossname)
-        pbLogSheet.update_cell(row_to_update, 3, convertForSheet(len(players)))
-        pbLogSheet.update_cell(row_to_update, 4, time)
-        pbLogSheet.update_cell(row_to_update, 5, proof)
-        pbLogSheet.update_cell(row_to_update, 7, row_to_update - 1)
+    try:
+        for i in range(len(players)):
+            row_to_update = i + row_location + 1
+            pbLogSheet.update_cell(row_to_update, 1, str(await convertPlayers(players[i])))
+            pbLogSheet.update_cell(row_to_update, 2, bossname)
+            pbLogSheet.update_cell(row_to_update, 3, convertForSheet(len(players)))
+            pbLogSheet.update_cell(row_to_update, 4, time)
+            pbLogSheet.update_cell(row_to_update, 5, proof)
+            pbLogSheet.update_cell(row_to_update, 7, row_to_update - 1)
+    except: 
+        await channel.send("Error during spreadsheet insertion for PB: " + str(proof))
 
     get_db()
 
@@ -606,19 +622,20 @@ async def refreshPbChannel():
     # PBs building in discord
     for category in top3Pbs:
         if top3Pbs.index(category) == 0:
-            await pb_leaderboard.send(file=discord.File('resources/banners/cox.png'))
-        elif top3Pbs.index(category) == 1:
             await pb_leaderboard.send(file=discord.File('resources/banners/cm.png'))
-        elif top3Pbs.index(category) == 4:
+        elif top3Pbs.index(category) == 3:
             await pb_leaderboard.send(file=discord.File('resources/banners/tob.png'))
-        elif top3Pbs.index(category) == 8:
+        elif top3Pbs.index(category) == 7:
             await pb_leaderboard.send(file=discord.File('resources/banners/inferno.png'))
-        elif top3Pbs.index(category) == 9:
+        elif top3Pbs.index(category) == 8:
             await pb_leaderboard.send(file=discord.File('resources/banners/fight_caves.png'))
-        elif top3Pbs.index(category) == 11:
+        elif top3Pbs.index(category) == 10:
             await pb_leaderboard.send(file=discord.File('resources/banners/c_gauntlet.png'))
+        elif top3Pbs.index(category) == 11:
+            await pb_leaderboard.send(file=discord.File('resources/banners/toa.png'))
 
-        await addPbToChannel(category, pb_leaderboard, category.getScale())
+        if top3Pbs.index(category) != 13:
+            await addPbToChannel(category, pb_leaderboard, category.getScale())
 
 
     pbsRequireUpdate[0] = False
@@ -680,8 +697,9 @@ async def addPbToChannel(category, channel, scale):
         message += "```yaml"
         proof = ""
         for pb in category.getPbList():
-            message += "\n" + positions[category.getPbList().index(pb)] + ": " + str(convertTime(pb.getTime())) + " - " + str(await convertPlayers(pb.getPlayers()))
-            proof += "\n<" + str(pb.getProof()) + "\>"
+            if pb is not None:
+                message += "\n" + positions[category.getPbList().index(pb)] + ": " + str(convertTime(pb.getTime())) + " - " + str(await convertPlayers(pb.getPlayers()))
+                proof += "\n<" + str(pb.getProof()).strip() + "\>"
         if (proof != ""):
             message += "```"
             message += proof
